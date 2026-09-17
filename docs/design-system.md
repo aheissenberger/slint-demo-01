@@ -37,6 +37,36 @@ The scoped requirements in `ui/AGENTS.md` are mandatory for every `.slint`
 change. They exist to prevent a superficially modern but generic "web card"
 appearance from replacing Fluent 2 desktop hierarchy.
 
+### Current baseline: why the app does not yet read as Windows 11
+
+The current screen is a useful functional foundation, but its visual language
+is still only partially Fluent 2:
+
+- `MainWindow` is a flat header followed by an unlayered form. There is no
+  deliberate primary content surface or contextual command hierarchy, so the
+  result reads like a simple web form rather than a Windows desktop page.
+- The header uses a separator but does not establish a Fluent title/page
+  hierarchy. A header rectangle, a blue button, and a light background are not
+  sufficient evidence of Windows 11 design.
+- `Theme.shadow` is defined but the screen does not apply it to a meaningful
+  surface. Conversely, adding decorative shadows to controls would be the
+  wrong correction: Fluent controls remain flat.
+- The theme exposes `Segoe UI Variable` but the token contract must include a
+  `Segoe UI` fallback and a platform fallback. Linux screenshots can therefore
+  differ from Windows typography without proving a Windows fidelity problem.
+- Shared controls have the right starting geometry, but every state must be
+  reviewed as a complete interaction system: keyboard focus, hover, pressed,
+  disabled, and invalid states must be visible and semantically exposed. An
+  opacity change or a border color alone is not an adequate state design.
+- A reusable component can still break the token contract: for example,
+  literal borders, dimensions, colors, or typography in a component bypass
+  the theme and make later Fluent tuning inconsistent.
+
+This diagnosis is a review aid, not permission to redesign the app into a
+dashboard or to add cards without a task-based hierarchy. Fix composition and
+tokens in the smallest coherent increment, then validate the result against
+the checklist below.
+
 ### What makes a screen recognizably Windows 11
 
 A Fluent 2 token palette alone does not make an application look like Windows

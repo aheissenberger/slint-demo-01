@@ -36,14 +36,21 @@ This repository is designed for agentic software development inside a Linux DevC
   `.slint` file.
 - Treat the Fluent 2 requirements as mandatory for Windows-targeted UI, not as
   a loose "Fluent-inspired" theme.
+- Review composition as well as styling: a flat header/form, decorative card
+  stack, or unused elevation token is not a Windows 11 page hierarchy.
 - Reuse existing components and design tokens; do not invent arbitrary colors,
   spacing, typography, radii, or state treatments.
+- Literal visual values are prohibited in both screen files and reusable
+  components unless the design-system documentation records a necessary
+  exception.
 - Preserve semantic IDs, keyboard navigation, visible focus, and accessible labels.
 - Keep business logic out of Slint and do not use emoji as icons.
 - After UI changes, run `./scripts/check`, relevant tests, semantic UI
-  inspection when available, and capture a screenshot. Compare the result
-  against the Fluent 2 review checklist in `docs/design-system.md`; validate
-  Windows chrome and rendering on Windows when the change affects either.
+  inspection and interaction when available, and capture a screenshot. Compare
+  the result against every Fluent 2 review checklist item in
+  `docs/design-system.md`; validate Windows chrome and rendering on Windows
+  when the change affects either. Do not mark the task complete when a check
+  is skipped or fails without a documented, tested exception.
 
 ## Safety
 - Never log secrets, credentials, tokens, or personal data.

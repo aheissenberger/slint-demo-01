@@ -12,10 +12,10 @@ export component FluentButton inherits Rectangle {
     border-radius: Theme.radius_1;
     border-width: Theme.border_width;
     height: Theme.control_height;
-    min-width: 96px;
+    min-width: Theme.button_min_width;
     background: primary ? Theme.accent : (destructive ? Theme.destructive_surface : Theme.panel);
     border-color: primary ? Theme.accent : Theme.border;
-    opacity: disabled ? 0.5 : 1;
+    opacity: disabled ? Theme.disabled_opacity : 1;
     accessible-role: button;
     accessible-label: root.label;
     accessible-description: root.agent-id;

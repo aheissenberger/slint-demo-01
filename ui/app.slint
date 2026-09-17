@@ -11,21 +11,38 @@ export component MainWindow inherits Window {
 
     title: "Slint Agent Desktop";
     preferred-width: 740px;
-    preferred-height: 420px;
+    preferred-height: 460px;
     min-width: 520px;
-    min-height: 320px;
-    background: Theme.background;
+    min-height: 360px;
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        background: Theme.background;
+    }
 
     Rectangle {
+        x: 0;
+        y: 0;
         width: parent.width;
         height: Theme.app_header_height;
         background: Theme.panel;
     }
 
+    Rectangle {
+        x: Theme.page_gutter;
+        y: Theme.space_6;
+        width: Theme.space_1;
+        height: Theme.space_8;
+        background: Theme.accent;
+        border-radius: Theme.radius_1;
+    }
+
     Text {
-        x: Theme.space_6;
-        y: Theme.space_5;
-        width: root.width - Theme.space_6 * 2;
+        x: Theme.page_gutter + Theme.space_4;
+        y: Theme.space_4;
+        width: root.width - Theme.page_gutter * 2;
         height: Theme.subtitle_line_height;
         text: "Slint Agent Desktop";
         color: Theme.text_primary;
@@ -42,74 +59,85 @@ export component MainWindow inherits Window {
         background: Theme.border;
     }
 
-    VerticalLayout {
-        x: Theme.space_8;
+    Rectangle {
+        x: Theme.page_gutter;
         y: Theme.app_header_height + Theme.space_6;
-        width: Theme.form_content_width;
-        height: parent.height - Theme.app_header_height - Theme.space_6 * 2;
-        spacing: Theme.space_4;
-        alignment: start;
+        width: root.width - Theme.page_gutter * 2;
+        height: root.height - Theme.app_header_height - Theme.space_6 * 2;
+        border-radius: Theme.radius_2;
+        border-width: Theme.border_width;
+        border-color: Theme.border;
+        background: Theme.panel;
 
-        Text {
-            text: "Send a value";
-            color: Theme.text_primary;
-            font-size: Theme.title_size;
-            font-family: Theme.font_family;
-            font-weight: Theme.title_weight;
-            height: Theme.title_line_height;
-        }
+        VerticalLayout {
+            x: Theme.space_6;
+            y: Theme.space_6;
+            width: parent.width - Theme.space_6 * 2;
+            height: parent.height - Theme.space_6 * 2;
+            spacing: Theme.space_4;
+            alignment: start;
 
-        Text {
-            text: "Enter a value to send it to the agent.";
-            color: Theme.text_secondary;
-            font-size: Theme.body_size;
-            font-family: Theme.font_family;
-            height: Theme.body_line_height;
-        }
-
-        Text {
-            text: "Status: " + root.status;
-            color: Theme.text_secondary;
-            font-size: Theme.caption_size;
-            font-family: Theme.font_family;
-            accessible-label: "Application status";
-            height: Theme.caption_line_height;
-        }
-
-        FluentTextField {
-            width: Theme.form_content_width;
-            label: "Value";
-            placeholder: "Enter a value";
-            value <=> root.input-value;
-            agent-id: "main.input";
-            label-for-accessibility: "Main input";
-            edited(value) => {
-                root.input-changed(value);
+            Text {
+                text: "Send a value";
+                color: Theme.text_primary;
+                font-size: Theme.title_size;
+                font-family: Theme.font_family;
+                font-weight: Theme.title_weight;
+                height: Theme.title_line_height;
             }
-        }
 
-        HorizontalLayout {
-            width: Theme.form_content_width;
-            spacing: Theme.space_3;
-            alignment: end;
-            height: Theme.control_height;
+            Text {
+                text: "Enter a value to send it to the agent.";
+                color: Theme.text_secondary;
+                font-size: Theme.body_size;
+                font-family: Theme.font_family;
+                height: Theme.body_line_height;
+            }
 
-            FluentButton {
-                label: "Reset";
-                agent-id: "main.reset";
-                clicked => {
-                    root.input-value = "";
-                    root.reset();
+            Text {
+                text: "Status: " + root.status;
+                color: Theme.text_secondary;
+                font-size: Theme.caption_size;
+                font-family: Theme.font_family;
+                accessible-label: "Application status";
+                height: Theme.caption_line_height;
+            }
+
+            FluentTextField {
+                width: parent.width;
+                label: "Value";
+                placeholder: "Enter a value";
+                value <=> root.input-value;
+                agent-id: "main.input";
+                label-for-accessibility: "Main input";
+                edited(value) => {
+                    root.input-changed(value);
                 }
             }
 
-            FluentButton {
-                label: "Submit";
-                primary: true;
-                disabled: root.input-value == "";
-                agent-id: "main.submit";
-                clicked => {
-                    root.submit(root.input-value);
+            HorizontalLayout {
+                width: parent.width;
+                spacing: Theme.space_3;
+                alignment: end;
+                height: Theme.control_height;
+
+                FluentButton {
+                    label: "Reset";
+                    agent-id: "main.reset";
+                    clicked => {
+                        root.input-value = "";
+                        root.reset();
+                    }
+                }
+
+                FluentButton {
+                    label: "Submit";
+                    primary: true;
+                    disabled: root.input-value == "";
+                    agent-id: "main.submit";
+                    clicked => {
+                        root.submit(root.input-value);
+                    }
                 }
             }
         }

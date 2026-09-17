@@ -859,6 +859,23 @@ For every meaningful change:
 
 Agents should not declare a task complete if `scripts/check` fails.
 
+For every visual `.slint` change, also read `docs/design-system.md` and
+`ui/AGENTS.md` before editing. Apply the mandatory Fluent 2 review gates:
+
+```text
+1. inspect page hierarchy and surface usage, not just colors
+2. verify every visual value comes from the theme/component token system
+3. verify shared controls expose complete interaction states and semantics
+4. inspect and exercise the semantic UI tree
+5. capture a screenshot and review it against the Fluent 2 checklist
+6. use native Windows validation for claims about Windows chrome or fidelity
+```
+
+Do not approve a change because it has a white surface, rounded corners, a
+blue button, or a Linux/Xvfb screenshot. Those details do not establish
+Windows 11 fidelity. If a gate cannot be run, record the limitation and do
+not present the result as fully validated.
+
 ---
 
 # 23. Agent UI workflow
