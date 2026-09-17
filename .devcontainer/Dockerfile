@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-dev libxext-dev libxft-dev libxrandr-dev libxrender-dev libxcb1-dev \
     libx11-xcb-dev libxcursor-dev xinput libssl-dev libglib2.0-dev libgtk-3-dev libasound2-dev \
     libxkbcommon-x11-0 libinput10 \
-    xvfb xauth x11vnc openbox net-tools websockify novnc supervisor imagemagick x11-utils dbus-x11 \
+    xvfb xauth x11vnc openbox net-tools websockify novnc supervisor imagemagick x11-utils dbus-x11 zenity \
     lldb \
     && rm -rf /var/lib/apt/lists/*
 
