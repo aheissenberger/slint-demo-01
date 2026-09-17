@@ -10,7 +10,7 @@ export component FluentButton inherits Rectangle {
     callback clicked;
 
     border-radius: Theme.radius_1;
-    border-width: 1px;
+    border-width: Theme.border_width;
     height: Theme.control_height;
     min-width: 96px;
     background: primary ? Theme.accent : (destructive ? Theme.destructive_surface : Theme.panel);
@@ -34,8 +34,8 @@ export component FluentButton inherits Rectangle {
     ]
 
     focus-scope := FocusScope {
-        width: parent.width;
-        height: parent.height;
+        width: root.width;
+        height: root.height;
 
         touch-area := TouchArea {
             enabled: !disabled;
@@ -54,7 +54,7 @@ export component FluentButton inherits Rectangle {
             color: primary || destructive ? Theme.accent_foreground : Theme.text_primary;
             font-size: Theme.body_size;
             font-family: Theme.font_family;
-            font-weight: Theme.strong_weight;
+            font-weight: Theme.body_weight;
             vertical-alignment: center;
         }
     }

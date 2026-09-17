@@ -2,7 +2,7 @@ import { Theme } from "../theme/theme.slint";
 
 export component FluentTextField inherits Rectangle {
     in property <string> label: "Label";
-    in property <string> value: "";
+    in-out property <string> value: "";
     in property <string> placeholder: "";
     in property <bool> disabled: false;
     in property <bool> invalid: false;
@@ -23,11 +23,14 @@ export component FluentTextField inherits Rectangle {
     ]
 
     VerticalLayout {
+        width: root.width;
+        height: root.height;
         spacing: Theme.space_2;
         padding-bottom: Theme.space_1;
 
         Text {
             text: root.label;
+            width: root.width;
             color: Theme.text_primary;
             font-size: Theme.body_size;
             font-family: Theme.font_family;
@@ -36,18 +39,20 @@ export component FluentTextField inherits Rectangle {
         }
 
         field := Rectangle {
+            width: root.width;
             height: Theme.field_height;
             border-radius: Theme.radius_1;
-            border-width: invalid ? 2px : 1px;
+            border-width: invalid ? Theme.border_width * 2 : Theme.border_width;
             border-color: root.invalid ? Theme.error : Theme.border;
             background: Theme.panel;
+            clip: true;
 
             input := TextInput {
-                text: root.value;
+                text <=> root.value;
                 enabled: !root.disabled;
                 x: Theme.space_2;
-                width: parent.width - Theme.space_2 * 2;
-                height: parent.height;
+                width: field.width - Theme.space_2 * 2;
+                height: field.height;
                 vertical-alignment: center;
                 color: root.disabled ? Theme.text_disabled : Theme.text_primary;
                 font-family: Theme.font_family;
@@ -62,6 +67,8 @@ export component FluentTextField inherits Rectangle {
                 color: Theme.text_secondary;
                 font-size: Theme.body_size;
                 x: Theme.space_2;
+                width: field.width - Theme.space_2 * 2;
+                height: field.height;
                 font-family: Theme.font_family;
                 vertical-alignment: center;
             }
@@ -69,7 +76,7 @@ export component FluentTextField inherits Rectangle {
             states [
                 focus when input.has-focus : {
                     border-color: Theme.focus;
-                    border-width: 2px;
+                    border-width: Theme.border_width * 2;
                 }
             ]
         }

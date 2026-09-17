@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
+actionlint .github/workflows/*.yml
 cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo clippy --all-targets --all-features -- -D warnings

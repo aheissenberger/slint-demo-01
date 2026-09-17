@@ -1,5 +1,6 @@
 services:
   devcontainer:
+    platform: linux/arm64
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
@@ -18,8 +19,6 @@ services:
       - cargo-registry:/root/.cargo/registry
       - cargo-git:/root/.cargo/git
       - target-cache:/workspace/target
-      - vscode-server:/root/.vscode-server
-      - vscode-server-insiders:/root/.vscode-server-insiders
     ports:
       - "127.0.0.1:5900:5900"
       - "127.0.0.1:6080:6080"
@@ -30,5 +29,3 @@ volumes:
   cargo-registry:
   cargo-git:
   target-cache:
-  vscode-server:
-  vscode-server-insiders:

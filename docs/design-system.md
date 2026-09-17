@@ -6,9 +6,12 @@ DevContainer rendering used for development and automated verification.
 
 ## Design direction
 
-Use a Windows 11 / Fluent-inspired desktop language without reproducing
-Win32 controls or depending on Windows-only APIs. The design rules below are
-implementation constraints for agents, not optional styling suggestions.
+Use the Windows 11 Fluent 2 design language. "Fluent-inspired" is not an
+acceptable target: the rules below are implementation constraints for agents,
+not optional styling suggestions. Native Windows behavior may be supplied by
+the platform, but the Slint content must follow Fluent 2 hierarchy, token, and
+interaction conventions without reproducing Win32 controls or depending on
+Windows-only APIs.
 Prioritize decisions in this order:
 
 1. usability
@@ -29,6 +32,30 @@ control geometry in screen files. Add or update a token in `ui/theme/` first,
 then consume that token from a reusable component. Do not call a generic
 rectangle a card unless it groups related content and has a documented
 hierarchy purpose.
+
+The scoped requirements in `ui/AGENTS.md` are mandatory for every `.slint`
+change. They exist to prevent a superficially modern but generic "web card"
+appearance from replacing Fluent 2 desktop hierarchy.
+
+### What makes a screen recognizably Windows 11
+
+A Fluent 2 token palette alone does not make an application look like Windows
+11. The composition must also provide:
+
+- a deliberate application/page hierarchy: title or header, contextual
+  commands when needed, then content;
+- compact desktop density, clear alignment, and whitespace that separates
+  sections rather than framing one oversized centered card;
+- layered surfaces only where hierarchy calls for them (for example, dialogs,
+  flyouts, or a distinct task group), with subtle elevation;
+- Segoe UI Variable (or Segoe UI fallback) and Fluent typography roles;
+- standard Fluent 2 control geometry and complete, restrained control states;
+- native Windows caption buttons, snapping, and system accessibility rather
+  than simulated title-bar UI in content.
+
+Do not treat the following as Fluent 2 evidence: a white rounded rectangle, a
+blue button, a drop shadow, or Linux/Xvfb window decorations. Each may be
+appropriate, but none establishes Windows 11 visual fidelity on its own.
 
 ## Tokens and components
 
@@ -97,6 +124,11 @@ decorations and are not evidence of native Windows title-bar fidelity. Agents
 must not imitate title-bar buttons inside the content area unless a real custom
 window-chrome implementation is explicitly required and tested on every target.
 
+Slint rendering is not itself a Windows controls implementation. When exact
+native behavior, materials, system accent response, high contrast, or caption
+button behavior is required, validate it on supported Windows hardware and
+record any accepted platform limitation in the change description.
+
 ### Theme rules
 
 Keep light and dark semantic roles paired when adding theme support. Never
@@ -152,3 +184,26 @@ These artifacts are complementary: they describe application state,
 semantics, pixels, and diagnostics without requiring interactive VNC
 debugging. Failure output is generated evidence and must not be committed
 unless a particular investigation explicitly requires it.
+
+### Mandatory Fluent 2 review checklist
+
+For every visual `.slint` change, review the rendered screen before declaring
+it complete:
+
+1. **Hierarchy:** Does the screen read as an application page with a clear
+   title, context, and primary action, rather than a centered website card?
+2. **Tokens:** Are every color, size, radius, border, shadow, font, and state
+   value supplied by the theme/component system?
+3. **Controls:** Do buttons and fields use the shared Fluent components with
+   compact geometry and distinct hover, pressed, focus, disabled, and invalid
+   states as applicable?
+4. **Surface use:** Are cards and elevation reserved for meaningful grouping or
+   layering, with no nested opaque surfaces or decorative shadows?
+5. **Accessibility:** Do controls retain stable semantic IDs, accessible roles
+   and labels, visible focus, and keyboard operation?
+6. **Platform fidelity:** If chrome or platform appearance changed, has the
+   result been validated on Windows? Linux/Xvfb screenshots cannot approve
+   Windows-specific fidelity.
+
+If any answer is no, revise the design or document a deliberate,
+tested exception before merging.

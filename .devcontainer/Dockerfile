@@ -1,5 +1,4 @@
-# Pin the base image manifest so rebuilds are reproducible.
-FROM mcr.microsoft.com/devcontainers/base:trixie@sha256:24d966f81dba10fdac68d91853bf2e7d9df898190c7397757fad48b4759f99ec
+FROM mcr.microsoft.com/devcontainers/base:trixie
 
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
@@ -25,6 +24,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN mkdir -p /tmp && curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.98.1 \
     && /root/.cargo/bin/rustup component add --toolchain 1.98.1 rustfmt clippy rust-analyzer \
     && /root/.cargo/bin/cargo install cargo-watch --locked
+
+ARG ACTIONLINT_VERSION=1.7.7
+RUN set -eux; \
+    case "$(uname -m)" in \
+      aarch64) actionlint_arch=arm64 ;; \
+      x86_64) actionlint_arch=amd64 ;; \
+      *) echo "Unsupported actionlint architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${actionlint_arch}.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint
 
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd
 

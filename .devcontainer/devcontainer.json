@@ -1,4 +1,5 @@
 {
+  
   "name": "slint-agent-desktop",
   "dockerComposeFile": "docker-compose.yml",
   "service": "devcontainer",

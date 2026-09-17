@@ -32,11 +32,18 @@ This repository is designed for agentic software development inside a Linux DevC
 - Keep accessible roles and labels up to date whenever controls change.
 
 ## UI design rules
-- Read `docs/design-system.md` before changing UI.
-- Reuse existing components and design tokens; do not invent arbitrary colors or spacing.
+- Read `docs/design-system.md` and the scoped `ui/AGENTS.md` before changing a
+  `.slint` file.
+- Treat the Fluent 2 requirements as mandatory for Windows-targeted UI, not as
+  a loose "Fluent-inspired" theme.
+- Reuse existing components and design tokens; do not invent arbitrary colors,
+  spacing, typography, radii, or state treatments.
 - Preserve semantic IDs, keyboard navigation, visible focus, and accessible labels.
 - Keep business logic out of Slint and do not use emoji as icons.
-- After UI changes, run `./scripts/check`, relevant tests, semantic UI inspection when available, and capture a screenshot.
+- After UI changes, run `./scripts/check`, relevant tests, semantic UI
+  inspection when available, and capture a screenshot. Compare the result
+  against the Fluent 2 review checklist in `docs/design-system.md`; validate
+  Windows chrome and rendering on Windows when the change affects either.
 
 ## Safety
 - Never log secrets, credentials, tokens, or personal data.

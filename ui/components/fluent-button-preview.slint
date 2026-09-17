@@ -1,0 +1,16 @@
+import { FluentButton } from "./fluent-button.slint";
+import { Theme } from "../theme/theme.slint";
+
+export component FluentButtonPreview inherits Window {
+    title: "Fluent Button Preview";
+    preferred-width: 240px;
+    preferred-height: 120px;
+    background: Theme.background;
+
+    FluentButton {
+        x: (parent.width - width) / 2;
+        y: (parent.height - height) / 2;
+        label: "Button";
+        primary: true;
+    }
+}
