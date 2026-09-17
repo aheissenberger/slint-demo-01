@@ -9,7 +9,17 @@ export component MainWindow inherits Window {
     in property <string> app-version: "0.1.0";
     in property <bool> submit-enabled: false;
     in property <bool> cancel-enabled: false;
+    in property <bool> retry-enabled: false;
     in property <int> progress: -1;
+    in property <bool> error-visible: false;
+    in property <bool> error-critical-visible: false;
+    in property <string> error-title: "";
+    in property <string> error-message: "";
+    in property <string> error-detail: "";
+    in property <string> input-validation-message: "";
+    in property <string> note-title-validation-message: "";
+    in property <string> note-body-validation-message: "";
+    in property <string> task-summary: "";
     in property <bool> note-save-enabled: false;
     in property <bool> note-selected: false;
     in property <int> notes-count: 0;
@@ -35,12 +45,15 @@ export component MainWindow inherits Window {
     in-out property <string> theme-mode: "system";
     out property <bool> about-visible: about-popup.is-open;
     out property <bool> settings-visible: settings-popup.is-open;
+    out property <bool> critical-error-visible: critical-error-popup.is-open;
     callback submit(string);
     callback input-changed(string);
     callback pick-file();
     callback show-native-file-picker();
     callback reset();
     callback cancel();
+    callback retry-last-task();
+    callback dismiss-error();
     callback new-note();
     callback save-note();
     callback archive-note();
@@ -58,6 +71,93 @@ export component MainWindow inherits Window {
             : root.theme-mode == "dark"
                 ? ColorScheme.dark
                 : ColorScheme.unknown;
+    }
+
+    // agent-id: "error.dialog"
+    // agent-role: "alertdialog"
+    // agent-actions: ""
+    critical-error-popup := PopupWindow {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        close-policy: no-auto-close;
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.scrim;
+        }
+
+        Rectangle {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            width: Theme.critical_dialog_width;
+            height: Theme.critical_dialog_height;
+            border-radius: Theme.radius_2;
+            border-width: Theme.border_width;
+            border-color: Theme.border;
+            background: Theme.panel;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-blur: Theme.surface_shadow_blur;
+            drop-shadow-offset-y: Theme.surface_shadow_offset_y;
+
+            VerticalLayout {
+                x: Theme.space_6;
+                y: Theme.space_6;
+                width: parent.width - Theme.space_6 * 2;
+                height: parent.height - Theme.space_6 * 2;
+                spacing: Theme.space_4;
+                alignment: start;
+
+                Text {
+                    text: root.error-title == "" ? @tr("Kritischer Fehler") : root.error-title;
+                    color: Theme.text_primary;
+                    font-size: Theme.title_size;
+                    font-family: Theme.font_family;
+                    font-weight: Theme.title_weight;
+                    height: Theme.title_line_height;
+                }
+
+                Text {
+                    width: parent.width;
+                    height: Theme.body_line_height * 3;
+                    text: root.error-message;
+                    color: Theme.text_primary;
+                    font-size: Theme.body_size;
+                    font-family: Theme.font_family;
+                    wrap: word-wrap;
+                    accessible-label: @tr("Fehlermeldung");
+                }
+
+                Text {
+                    width: parent.width;
+                    height: Theme.caption_line_height * 2;
+                    text: root.error-detail;
+                    color: Theme.text_secondary;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    wrap: word-wrap;
+                    accessible-label: @tr("Fehlerdiagnose");
+                }
+
+                HorizontalLayout {
+                    width: parent.width;
+                    height: Theme.control_height;
+                    alignment: end;
+
+                    critical-error-close-button := FluentButton {
+                        label: @tr("Schließen");
+                        agent-id: "error.dialog.close";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => {
+                            root.dismiss-error();
+                        }
+                    }
+                }
+            }
+        }
     }
 
     init => {
@@ -82,6 +182,14 @@ export component MainWindow inherits Window {
 
     public function hide-settings() {
         settings-popup.close();
+    }
+
+    public function show-critical-error() {
+        critical-error-popup.show();
+    }
+
+    public function hide-critical-error() {
+        critical-error-popup.close();
     }
 
     public function focus-control(element-id: string) {
@@ -414,6 +522,16 @@ export component MainWindow inherits Window {
                     }
                 }
 
+                if (root.note-title-validation-message != "") : Text {
+                    width: parent.width;
+                    text: root.note-title-validation-message;
+                    color: Theme.error;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    height: Theme.caption_line_height;
+                    accessible-label: @tr("Validierung des Notiztitels");
+                }
+
                 note-body-field := FluentTextField {
                     width: parent.width;
                     label: @tr("Inhalt");
@@ -426,6 +544,16 @@ export component MainWindow inherits Window {
                     edited(value) => {
                         root.note-body-changed(value);
                     }
+                }
+
+                if (root.note-body-validation-message != "") : Text {
+                    width: parent.width;
+                    text: root.note-body-validation-message;
+                    color: Theme.error;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    height: Theme.caption_line_height;
+                    accessible-label: @tr("Validierung des Notizinhalts");
                 }
 
                 HorizontalLayout {
@@ -491,12 +619,87 @@ export component MainWindow inherits Window {
                     height: Theme.caption_line_height;
                 }
 
+                // agent-id: "main.error"
+                // agent-role: "alert"
+                // agent-actions: "get_value"
+                if (root.error-visible && !root.error-critical-visible) : Rectangle {
+                    width: parent.width;
+                    height: Theme.inline_error_height;
+                    border-radius: Theme.radius_1;
+                    border-width: Theme.border_width;
+                    border-color: Theme.error;
+                    background: Theme.panel;
+
+                    VerticalLayout {
+                        x: Theme.space_3;
+                        y: Theme.space_3;
+                        width: parent.width - Theme.space_3 * 2;
+                        height: parent.height - Theme.space_3 * 2;
+                        spacing: Theme.space_2;
+
+                        Text {
+                            text: root.error-title;
+                            color: Theme.error;
+                            font-size: Theme.body_size;
+                            font-family: Theme.font_family;
+                            font-weight: Theme.strong_weight;
+                            height: Theme.body_line_height;
+                        }
+
+                        Text {
+                            text: root.error-message;
+                            color: Theme.text_primary;
+                            font-size: Theme.caption_size;
+                            font-family: Theme.font_family;
+                            height: Theme.caption_line_height;
+                            wrap: word-wrap;
+                        }
+
+                        HorizontalLayout {
+                            width: parent.width;
+                            height: Theme.control_height;
+                            spacing: Theme.space_2;
+                            alignment: end;
+
+                            retry-button := FluentButton {
+                                label: @tr("Erneut versuchen");
+                                disabled: !root.retry-enabled;
+                                agent-id: "main.retry";
+                                agent-role: "button";
+                                agent-actions: "click,focus";
+                                clicked => { root.retry-last-task(); }
+                            }
+
+                            dismiss-error-button := FluentButton {
+                                label: @tr("Hinweis schließen");
+                                agent-id: "main.error.dismiss";
+                                agent-role: "button";
+                                agent-actions: "click,focus";
+                                clicked => { root.dismiss-error(); }
+                            }
+                        }
+                    }
+                }
+
                 if (root.progress >= 0) : Text {
                     text: @tr("Fortschritt: {}%", root.progress);
                     color: Theme.text_secondary;
                     font-size: Theme.caption_size;
                     font-family: Theme.font_family;
                     accessible-label: @tr("Fortschritt des Vorgangs");
+                    height: Theme.caption_line_height;
+                }
+
+                // agent-id: "main.tasks"
+                // agent-role: "status"
+                // agent-actions: "get_value"
+                Text {
+                    width: parent.width;
+                    text: root.task-summary == "" ? @tr("Keine Hintergrundvorgänge") : root.task-summary;
+                    color: Theme.text_secondary;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    accessible-label: @tr("Hintergrundvorgänge");
                     height: Theme.caption_line_height;
                 }
 
@@ -512,6 +715,16 @@ export component MainWindow inherits Window {
                     edited(value) => {
                         root.input-changed(value);
                     }
+                }
+
+                if (root.input-validation-message != "") : Text {
+                    width: parent.width;
+                    text: root.input-validation-message;
+                    color: Theme.error;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    height: Theme.caption_line_height;
+                    accessible-label: @tr("Validierung der Haupteingabe");
                 }
 
                 file-picker := FluentButton {

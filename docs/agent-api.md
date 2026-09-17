@@ -58,9 +58,26 @@ slots remain disabled. The same behavior is available through commands:
 `new_note`, `select_note`, `set_note_title`, `set_note_body`, `save_note`,
 `archive_note`, and `delete_note`.
 
-Stable UI action errors use an application error envelope with a machine-readable
-`code` and a diagnostic `message`. Application commands and UI actions share the
-same `AgentApi` runtime, so they cannot diverge in business behavior.
+Error, validation, retry, and task flows are part of the same semantic
+contract. `app_state` includes:
+
+- `ui_error` with `code`, `severity`, user text, diagnostic text, and
+  recoverability.
+- `validation_errors` keyed by semantic field IDs such as `main.input` and
+  `notes.title`.
+- `tasks`, `active_task_id`, and `can_retry` for concurrent long-running
+  operations.
+
+Recoverable errors appear as `main.error` with `main.retry` and
+`main.error.dismiss`. Critical recovery-required errors appear as
+`error.dialog` with `error.dialog.close`. Background task state is exposed as
+`main.tasks`. The commands `retry_last_task`, `dismiss_error`, and
+`cancel_task` mirror the corresponding UI actions.
+
+Stable UI action errors use an application error envelope with a
+machine-readable `code`, user-facing text, diagnostic text, and a recoverable
+flag. Application commands and UI actions share the same `AgentApi` runtime, so
+they cannot diverge in business behavior.
 
 ## MCP adapter
 
@@ -178,6 +195,11 @@ reused.
   "status": "bereit",
   "busy": false,
   "error": null,
+  "ui_error": null,
+  "validation_errors": [],
+  "tasks": [],
+  "active_task_id": null,
+  "can_retry": false,
   "theme_mode": "system",
   "notes": [],
   "selected_note_id": null,
@@ -199,6 +221,7 @@ reused.
     { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Ausgewählter Dateipfad" },
     { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Senden" },
     { "id": "main.status", "role": "status", "enabled": true, "value": "bereit", "accessible_label": "Anwendungsstatus" },
+    { "id": "main.tasks", "role": "status", "enabled": true, "value": "", "accessible_label": "Hintergrundvorgänge" },
     { "id": "file.settings", "role": "menuitem", "enabled": true, "accessible_label": "Einstellungen" },
     { "id": "help.about", "role": "menuitem", "enabled": true, "accessible_label": "Über" }
   ]

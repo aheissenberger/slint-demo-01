@@ -37,7 +37,10 @@ Notes AppShell path. The legacy agent demo remains available through
 `scripts/agent set main.input Test` and `scripts/agent click main.submit`.
 Persistent settings, submissions, and notes are stored in a migrated SQLite
 database under the platform data directory. The HTTP agent API is
-development-only and listens on loopback.
+development-only and listens on loopback. Runtime errors are exposed with
+stable error codes, separate user/diagnostic text, inline validation, retry
+actions, and per-task progress so agent-driven checks can validate recovery
+flows without reading logs.
 MCP-capable coding agents can use `scripts/mcp` as a stdio server after
 `scripts/run`; see `docs/agent-api.md` for its tools and resources.
 

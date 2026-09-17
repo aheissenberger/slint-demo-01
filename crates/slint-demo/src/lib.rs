@@ -23,7 +23,11 @@ fn apply_state(ui: &MainWindow, state: AppState) {
     ui.set_status(status.into());
     ui.set_submit_enabled(state.can_submit());
     ui.set_cancel_enabled(state.busy);
+    ui.set_retry_enabled(state.can_retry());
     ui.set_progress(state.progress.map_or(-1, i32::from));
+    apply_error_state(ui, &state);
+    apply_validation_state(ui, &state);
+    apply_task_state(ui, &state);
     ui.set_note_save_enabled(state.can_save_note());
     ui.set_note_selected(state.selected_note_id.is_some());
     ui.set_notes_count(state.notes.len().try_into().unwrap_or(i32::MAX));
@@ -40,14 +44,6 @@ fn apply_state(ui: &MainWindow, state: AppState) {
     if ui.get_selected_file().as_str() != state.selected_file {
         ui.set_selected_file(state.selected_file.clone().into());
     }
-    if ui.get_about_visible() != state.is_about_open() {
-        if state.is_about_open() {
-            ui.invoke_show_about();
-        } else {
-            ui.invoke_hide_about();
-        }
-    }
-
     fn apply_note_slots(ui: &MainWindow, notes: &[application::NoteListItem]) {
         let slot = |index: usize| notes.get(index);
         let apply_slot = |id: &mut dyn FnMut(SharedString),
@@ -90,6 +86,48 @@ fn apply_state(ui: &MainWindow, state: AppState) {
             slot(4),
         );
     }
+    apply_dialog_state(ui, &state);
+    if ui.get_theme_mode().as_str() != state.theme_mode.as_str() {
+        ui.set_theme_mode(state.theme_mode.as_str().into());
+    }
+}
+
+fn apply_error_state(ui: &MainWindow, state: &AppState) {
+    ui.set_error_visible(state.visible_error().is_some());
+    ui.set_error_critical_visible(state.critical_error().is_some());
+    if let Some(error) = state.visible_error() {
+        ui.set_error_title(error_title(error.severity).into());
+        ui.set_error_message(error.user_message.clone().into());
+        ui.set_error_detail(format!("{}: {}", error.code, error.diagnostic_message).into());
+    } else {
+        ui.set_error_title("".into());
+        ui.set_error_message("".into());
+        ui.set_error_detail("".into());
+    }
+}
+
+fn apply_validation_state(ui: &MainWindow, state: &AppState) {
+    ui.set_input_validation_message(state.validation_message("main.input").unwrap_or("").into());
+    ui.set_note_title_validation_message(
+        state.validation_message("notes.title").unwrap_or("").into(),
+    );
+    ui.set_note_body_validation_message(
+        state.validation_message("notes.body").unwrap_or("").into(),
+    );
+}
+
+fn apply_task_state(ui: &MainWindow, state: &AppState) {
+    ui.set_task_summary(task_summary(state).into());
+}
+
+fn apply_dialog_state(ui: &MainWindow, state: &AppState) {
+    if ui.get_about_visible() != state.is_about_open() {
+        if state.is_about_open() {
+            ui.invoke_show_about();
+        } else {
+            ui.invoke_hide_about();
+        }
+    }
     if ui.get_settings_visible() != state.is_settings_open() {
         if state.is_settings_open() {
             ui.invoke_show_settings();
@@ -97,8 +135,12 @@ fn apply_state(ui: &MainWindow, state: AppState) {
             ui.invoke_hide_settings();
         }
     }
-    if ui.get_theme_mode().as_str() != state.theme_mode.as_str() {
-        ui.set_theme_mode(state.theme_mode.as_str().into());
+    if ui.get_critical_error_visible() != state.critical_error().is_some() {
+        if state.critical_error().is_some() {
+            ui.invoke_show_critical_error();
+        } else {
+            ui.invoke_hide_critical_error();
+        }
     }
 }
 
@@ -172,6 +214,7 @@ impl DesktopApp {
         Self::configure_notes(ui, &store);
         Self::configure_submit(ui, &store);
         Self::configure_cancel(ui, &store);
+        Self::configure_retry_and_error(ui, &store);
     }
 
     fn start_state_sync(ui: &MainWindow, updates: std::sync::mpsc::Receiver<StateUpdate>) {
@@ -366,6 +409,25 @@ impl DesktopApp {
         });
     }
 
+    fn configure_retry_and_error(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
+    ) {
+        let retry_store = Arc::clone(store);
+        ui.on_retry_last_task(move || {
+            if let Err(error) = retry_store.dispatch(AppAction::RetryLastFailedTask) {
+                tracing::error!(%error, "Vorgang konnte nicht erneut gestartet werden");
+            }
+        });
+
+        let dismiss_store = Arc::clone(store);
+        ui.on_dismiss_error(move || {
+            if let Err(error) = dismiss_store.dispatch(AppAction::DismissError) {
+                tracing::error!(%error, "Fehlerhinweis konnte nicht geschlossen werden");
+            }
+        });
+    }
+
     fn configure_file_picker(
         ui: &MainWindow,
         store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
@@ -502,6 +564,34 @@ fn notification_for_completion(was_busy: bool, state: &AppState) -> Option<Nativ
         }),
         domain::AppStatus::Ready | domain::AppStatus::Busy => None,
     }
+}
+
+fn error_title(severity: application::ErrorSeverity) -> &'static str {
+    match severity {
+        application::ErrorSeverity::Info => "Hinweis",
+        application::ErrorSeverity::Warning => "Eingabe prüfen",
+        application::ErrorSeverity::Error => "Vorgang fehlgeschlagen",
+        application::ErrorSeverity::Critical => "Kritischer Fehler",
+    }
+}
+
+fn task_summary(state: &AppState) -> String {
+    if state.tasks.is_empty() {
+        return String::new();
+    }
+    state
+        .tasks
+        .iter()
+        .rev()
+        .take(3)
+        .map(|task| {
+            task.progress.map_or_else(
+                || format!("{}: {}", task.title, task.status),
+                |progress| format!("{}: {} ({}%)", task.title, task.status, progress),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// Coverage tests for the bundled Slint `@tr(...)` translations. Static UI

@@ -447,7 +447,21 @@ fn rejected_ui_actions_are_visible_in_agent_state_and_status() {
         .get_state()
         .expect("state after rejected file selection");
     assert_eq!(state.status, "Fehler");
-    assert_eq!(state.error.as_deref(), Some(error.to_string().as_str()));
+    assert_eq!(
+        state.error.as_deref(),
+        Some("Die Eingabe konnte nicht verarbeitet werden.")
+    );
+    assert_eq!(
+        state.ui_error.as_ref().map(|error| error.code.to_string()),
+        Some("invalid_payload".into())
+    );
+    assert_eq!(
+        state
+            .ui_error
+            .as_ref()
+            .map(|error| error.diagnostic_message.as_str()),
+        Some(error.to_string().as_str())
+    );
 
     let status = api
         .inspect_ui()
@@ -458,7 +472,7 @@ fn rejected_ui_actions_are_visible_in_agent_state_and_status() {
         .expect("status element");
     assert_eq!(
         status.value.as_deref(),
-        Some(format!("Fehler: {error}").as_str())
+        Some("Fehler: Die Eingabe konnte nicht verarbeitet werden.")
     );
 }
 

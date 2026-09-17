@@ -33,7 +33,7 @@ impl SqliteRepository {
         Self::migrations()
             .to_latest(&mut connection)
             .map_err(|error| {
-                ApplicationError::Repository(format!(
+                ApplicationError::DataRecoveryRequired(format!(
                     "Datenbankschema konnte nicht migriert werden: {error}"
                 ))
             })?;
@@ -51,7 +51,7 @@ impl SqliteRepository {
         Self::migrations()
             .to_latest(&mut connection)
             .map_err(|error| {
-                ApplicationError::Repository(format!(
+                ApplicationError::DataRecoveryRequired(format!(
                     "Datenbankschema konnte nicht migriert werden: {error}"
                 ))
             })?;
@@ -302,7 +302,22 @@ fn domain_error_to_sqlite(error: impl std::fmt::Display) -> rusqlite::Error {
 }
 
 fn sqlite_error(error: rusqlite::Error) -> ApplicationError {
-    ApplicationError::Repository(format!("SQLite-Fehler: {error}"))
+    match error {
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code:
+                    rusqlite::ErrorCode::DatabaseCorrupt
+                    | rusqlite::ErrorCode::NotADatabase
+                    | rusqlite::ErrorCode::SchemaChanged,
+                ..
+            },
+            message,
+        ) => ApplicationError::DataRecoveryRequired(format!(
+            "SQLite-Datenbank ist beschädigt oder inkompatibel: {}",
+            message.unwrap_or_else(|| "keine Detailmeldung".into())
+        )),
+        error => ApplicationError::Repository(format!("SQLite-Fehler: {error}")),
+    }
 }
 
 fn bool_to_i64(value: bool) -> i64 {

@@ -276,6 +276,56 @@ msgctxt "SettingsDialog"
 msgid "App-Design"
 msgstr ""
 
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Kritischer Fehler"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Fehlermeldung"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Fehlerdiagnose"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Validierung des Notiztitels"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Validierung des Notizinhalts"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Erneut versuchen"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Hinweis schließen"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Keine Hintergrundvorgänge"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Hintergrundvorgänge"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Validierung der Haupteingabe"
+msgstr ""
+
 #: ui/screens/settings-dialog.slint:80
 msgctxt "SettingsDialog"
 msgid "Systemeinstellung verwenden"

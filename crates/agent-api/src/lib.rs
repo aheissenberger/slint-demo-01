@@ -1,5 +1,6 @@
 use application::{
-    AppAction, AppService, AppStateStore, ApplicationError, NoteListItem, ThemeMode,
+    AppAction, AppService, AppStateStore, ApplicationError, FieldValidation, NoteListItem,
+    TaskState, ThemeMode, UiError,
 };
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
@@ -16,6 +17,11 @@ pub struct AgentStateResponse {
     pub busy: bool,
     pub progress: Option<u8>,
     pub error: Option<String>,
+    pub ui_error: Option<UiError>,
+    pub validation_errors: Vec<FieldValidation>,
+    pub tasks: Vec<TaskState>,
+    pub active_task_id: Option<String>,
+    pub can_retry: bool,
     pub theme_mode: String,
     pub notes: Vec<NoteListItem>,
     pub selected_note_id: Option<String>,
@@ -87,6 +93,34 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
         UiComponentMetadata {
             role: "status",
             actions: &[],
+        },
+    ),
+    (
+        "main.error",
+        UiComponentMetadata {
+            role: "alert",
+            actions: &["get_value"],
+        },
+    ),
+    (
+        "main.error.dismiss",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "main.retry",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "main.tasks",
+        UiComponentMetadata {
+            role: "status",
+            actions: &["get_value"],
         },
     ),
     (
@@ -236,6 +270,20 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
             actions: &["click"],
         },
     ),
+    (
+        "error.dialog",
+        UiComponentMetadata {
+            role: "alertdialog",
+            actions: &[],
+        },
+    ),
+    (
+        "error.dialog.close",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
 ];
 
 pub fn ui_component_metadata(id: &str) -> Option<UiComponentMetadata> {
@@ -293,6 +341,10 @@ pub trait AgentService: Send {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentErrorResponse {
     pub error: String,
+    pub code: String,
+    pub user_message: String,
+    pub diagnostic_message: String,
+    pub recoverable: bool,
     pub element: Option<String>,
 }
 
@@ -325,7 +377,12 @@ where
             status: state.status.to_string(),
             busy: state.busy,
             progress: state.progress,
-            error: state.error_message,
+            error: state.error_message.clone(),
+            ui_error: state.ui_error.clone(),
+            validation_errors: state.validation_errors.clone(),
+            tasks: state.tasks.clone(),
+            active_task_id: state.active_task_id.clone(),
+            can_retry: state.can_retry(),
             theme_mode: state.theme_mode.as_str().to_string(),
             notes: state.notes,
             selected_note_id: state.selected_note_id,
@@ -346,6 +403,9 @@ where
         }
         if state.is_about_open() {
             elements.extend(about_elements());
+        }
+        if let Some(error) = state.critical_error() {
+            elements.extend(error_dialog_elements(error));
         }
 
         Ok(UiInspectionResponse {
@@ -371,6 +431,12 @@ where
         let command = match request.command.as_str() {
             "submit" => return Ok(self.store.submit()?.message),
             "cancel" => return Ok(self.store.cancel_submission()?.message),
+            "cancel_task" => {
+                let task_id = required_argument(&request.arguments, "id")?;
+                return Ok(self.store.cancel_task(task_id)?.message);
+            }
+            "retry_last_task" => AppAction::RetryLastFailedTask,
+            "dismiss_error" => AppAction::DismissError,
             "reset" => AppAction::Reset,
             "open_about" => AppAction::OpenAbout,
             "close_about" => AppAction::CloseAbout,
@@ -437,6 +503,10 @@ where
             "main.submit" => Ok(self.store.submit()?.message),
             "main.cancel" => Ok(self.store.cancel_submission()?.message),
             "main.reset" => Ok(self.store.dispatch(AppAction::Reset)?.message),
+            "main.retry" => Ok(self.store.dispatch(AppAction::RetryLastFailedTask)?.message),
+            "main.error.dismiss" | "error.dialog.close" => {
+                Ok(self.store.dispatch(AppAction::DismissError)?.message)
+            }
             "main.file-picker" => Ok(self.store.dispatch(AppAction::RequestFilePicker)?.message),
             "help.about" => Ok(self.store.dispatch(AppAction::OpenAbout)?.message),
             "file.settings" => Ok(self.store.dispatch(AppAction::OpenSettings)?.message),
@@ -489,6 +559,11 @@ where
         match action.id.as_str() {
             "main.file-picker" | "main.selected-file" => Ok(state.selected_file),
             "main.input" => Ok(state.input),
+            "main.error" => state
+                .visible_error()
+                .map(error_value)
+                .ok_or_else(|| ApplicationError::InvalidPayload("kein Fehler sichtbar".into())),
+            "main.tasks" => Ok(task_summary(&state)),
             "notes.list" => Ok(state.notes.len().to_string()),
             "notes.title" => Ok(state.note_title),
             "notes.body" => Ok(state.note_body),
@@ -499,13 +574,15 @@ where
     fn focus_ui_element(&self, action: AgentActionRequest) -> Result<String, ApplicationError> {
         match action.id.as_str() {
             "main.input" | "main.submit" | "main.reset" | "main.file-picker" | "main.cancel"
-            | "notes.new" | "notes.title" | "notes.body" | "notes.save" | "notes.archive"
-            | "notes.delete" => Ok(self
-                .store
-                .dispatch(AppAction::Focus {
-                    element_id: action.id,
-                })?
-                .message),
+            | "main.retry" | "main.error.dismiss" | "error.dialog.close" | "notes.new"
+            | "notes.title" | "notes.body" | "notes.save" | "notes.archive" | "notes.delete" => {
+                Ok(self
+                    .store
+                    .dispatch(AppAction::Focus {
+                        element_id: action.id,
+                    })?
+                    .message)
+            }
             _ => Err(unsupported_action(&action)),
         }
     }
@@ -549,6 +626,8 @@ where
                 "main.input"
                     | "main.submit"
                     | "main.cancel"
+                    | "main.retry"
+                    | "main.error.dismiss"
                     | "main.reset"
                     | "main.file-picker"
                     | "file.settings"
@@ -590,10 +669,20 @@ where
                 action.id
             )));
         }
+        if action.id == "error.dialog.close" && state.critical_error().is_none() {
+            return Err(ApplicationError::InvalidPayload(
+                "Element ist nicht sichtbar: error.dialog.close".into(),
+            ));
+        }
 
         let enabled = match action.id.as_str() {
             "main.submit" => state.can_submit(),
             "main.cancel" => state.busy,
+            "main.retry" => state.can_retry(),
+            "main.error.dismiss" => state
+                .visible_error()
+                .is_some_and(|error| error.severity != application::ErrorSeverity::Critical),
+            "error.dialog.close" => state.critical_error().is_some(),
             "main.reset"
             | "main.file-picker"
             | "notes.new"
@@ -645,7 +734,7 @@ where
 }
 
 fn main_elements(state: &application::AppState, main_controls_enabled: bool) -> Vec<AgentElement> {
-    vec![
+    let mut elements = vec![
         element(
             "main.input",
             main_controls_enabled,
@@ -686,7 +775,37 @@ fn main_elements(state: &application::AppState, main_controls_enabled: bool) -> 
             )),
             "Anwendungsstatus",
         ),
-    ]
+        element(
+            "main.tasks",
+            true,
+            Some(task_summary(state)),
+            "Hintergrundvorgänge",
+        ),
+    ];
+    if state
+        .visible_error()
+        .is_some_and(|error| error.severity != application::ErrorSeverity::Critical)
+    {
+        elements.push(element(
+            "main.error",
+            true,
+            state.visible_error().map(error_value),
+            "Fehlerhinweis",
+        ));
+        elements.push(element(
+            "main.retry",
+            main_controls_enabled && state.can_retry(),
+            None,
+            "Erneut versuchen",
+        ));
+        elements.push(element(
+            "main.error.dismiss",
+            main_controls_enabled,
+            None,
+            "Hinweis schließen",
+        ));
+    }
+    elements
 }
 
 fn note_elements(state: &application::AppState, main_controls_enabled: bool) -> Vec<AgentElement> {
@@ -809,6 +928,44 @@ fn about_elements() -> Vec<AgentElement> {
         element("about.dialog", true, None, "Über Slint Agent Desktop"),
         element("about.close", true, None, "Schließen"),
     ]
+}
+
+fn error_dialog_elements(error: &UiError) -> Vec<AgentElement> {
+    vec![
+        element(
+            "error.dialog",
+            true,
+            Some(error_value(error)),
+            "Kritischer Fehler",
+        ),
+        element("error.dialog.close", true, None, "Schließen"),
+    ]
+}
+
+fn error_value(error: &UiError) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        error.code, error.severity, error.user_message, error.diagnostic_message
+    )
+}
+
+fn task_summary(state: &application::AppState) -> String {
+    if state.tasks.is_empty() {
+        return String::new();
+    }
+    state
+        .tasks
+        .iter()
+        .rev()
+        .take(3)
+        .map(|task| {
+            task.progress.map_or_else(
+                || format!("{}: {}", task.title, task.status),
+                |progress| format!("{}: {} ({}%)", task.title, task.status, progress),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 impl<S> AgentService for AgentApi<S>
@@ -1003,14 +1160,19 @@ fn json_response(status: u16, body: &impl Serialize) -> String {
 }
 
 fn error_response(error: ApplicationError) -> String {
-    let code = match &error {
-        ApplicationError::InvalidPayload(_) => "invalid_input",
-        ApplicationError::Domain(_) => "domain_error",
-        ApplicationError::Repository(_) => "internal_error",
-    };
+    let ui_error = UiError::from_application_error(&error);
     json_response(
         400,
-        &serde_json::json!({"error":{"code":code,"message":error.to_string()}}),
+        &serde_json::json!({
+            "error": {
+                "code": ui_error.code.to_string(),
+                "message": error.to_string(),
+                "user_message": ui_error.user_message,
+                "diagnostic_message": ui_error.diagnostic_message,
+                "recoverable": ui_error.recoverable,
+                "element": null,
+            }
+        }),
     )
 }
 

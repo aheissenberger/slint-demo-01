@@ -7,19 +7,22 @@ pub use localization::{Catalog, Locale};
 pub use notes::{NoteRepository, NoteService};
 pub use reducer::{
     ActiveDialog, AppAction, AppEffect, AppEvent, AppReducer, AppState, ApplicationError,
-    CommandResult, NoteListItem, ThemeMode,
+    CommandResult, ErrorCode, ErrorSeverity, FieldValidation, NoteListItem, TaskState, TaskStatus,
+    ThemeMode, UiError,
 };
 pub use use_cases::{
     AppRepository, AppService, Clock, IdGenerator, SubmissionPayload, SystemClock, UuidV7Generator,
 };
 
+use std::collections::HashMap;
 use std::sync::{
-    mpsc::{self, Receiver, Sender, SyncSender, TrySendError},
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    mpsc::{self, Receiver, Sender},
     Arc, Mutex,
 };
 use std::thread;
 
-const SUBMISSION_QUEUE_CAPACITY: usize = 1;
+const MAX_PARALLEL_TASKS: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateUpdate {
@@ -32,8 +35,8 @@ pub struct AppStateStore<R> {
     service: AppService<R>,
     note_service: NoteService<R>,
     publisher: StatePublisher,
-    submission_sender: SyncSender<QueuedSubmission>,
-    cancellation: Arc<std::sync::atomic::AtomicBool>,
+    task_sequence: Arc<AtomicU64>,
+    cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
 }
 
 #[derive(Clone)]
@@ -58,33 +61,32 @@ where
             },
             Err(error) => {
                 tracing::warn!(%error, "gespeicherte Einstellungen konnten nicht geladen werden, verwende Vorgabewerte");
+                initial_state.ui_error = Some(UiError::from_application_error(&error));
+                if error.severity() == ErrorSeverity::Critical {
+                    initial_state.active_dialog = Some(ActiveDialog::CriticalError);
+                }
             }
         }
         match note_service.list_active_notes() {
             Ok(notes) => initial_state.replace_notes(notes.into_iter().map(Into::into).collect()),
             Err(error) => {
                 tracing::warn!(%error, "gespeicherte Notizen konnten nicht geladen werden");
+                initial_state.ui_error = Some(UiError::from_application_error(&error));
+                if error.severity() == ErrorSeverity::Critical {
+                    initial_state.active_dialog = Some(ActiveDialog::CriticalError);
+                }
             }
         }
         let publisher = StatePublisher {
             state: Arc::new(Mutex::new(initial_state)),
             subscribers: Arc::new(Mutex::new(Vec::new())),
         };
-        let (submission_sender, submission_receiver) =
-            mpsc::sync_channel(SUBMISSION_QUEUE_CAPACITY);
-        let cancellation = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        Self::start_submission_worker(
-            service.clone(),
-            publisher.clone(),
-            submission_receiver,
-            Arc::clone(&cancellation),
-        );
         Self {
             service,
             note_service,
             publisher,
-            submission_sender,
-            cancellation,
+            task_sequence: Arc::new(AtomicU64::new(1)),
+            cancellations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -100,6 +102,9 @@ where
         if matches!(action, AppAction::CancelSubmission) {
             return self.cancel_submission();
         }
+        if matches!(action, AppAction::RetryLastFailedTask) {
+            return self.retry_last_failed_submission();
+        }
         self.reduce(action)
     }
 
@@ -108,44 +113,42 @@ where
     }
 
     pub fn submit(&self) -> Result<CommandResult, ApplicationError> {
-        let (payload, started) = self.publisher.begin_submission()?;
-        self.cancellation
-            .store(false, std::sync::atomic::Ordering::Release);
-        match self
-            .submission_sender
-            .try_send(QueuedSubmission { payload })
-        {
-            Ok(()) => Ok(started),
-            Err(TrySendError::Full(_)) => {
-                let error =
-                    ApplicationError::Repository("Übermittlungsdienst ist ausgelastet".into());
-                self.publisher.publish_event(AppEvent::SubmissionFailed {
-                    message: error.to_string(),
-                })?;
-                Err(error)
-            }
-            Err(TrySendError::Disconnected(_)) => {
-                let error =
-                    ApplicationError::Repository("Übermittlungsdienst ist nicht verfügbar".into());
-                self.publisher.publish_event(AppEvent::SubmissionFailed {
-                    message: error.to_string(),
-                })?;
-                Err(error)
-            }
-        }
+        self.start_submission(None)
     }
 
     pub fn cancel_submission(&self) -> Result<CommandResult, ApplicationError> {
         let state = self.current_state()?;
-        if !state.busy {
+        let Some(task_id) = state.active_task_id else {
             return Ok(CommandResult {
                 message: "Kein Vorgang aktiv".into(),
                 state,
             });
+        };
+        self.cancel_task(&task_id)
+    }
+
+    pub fn cancel_task(&self, task_id: &str) -> Result<CommandResult, ApplicationError> {
+        if let Some(cancellation) = self
+            .cancellations
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Abbruchsperre beschädigt".into()))?
+            .get(task_id)
+        {
+            cancellation.store(true, Ordering::Release);
         }
-        self.cancellation
-            .store(true, std::sync::atomic::Ordering::Release);
-        self.publisher.publish_event(AppEvent::SubmissionCancelled)
+        self.publisher.publish_event(AppEvent::SubmissionCancelled {
+            task_id: task_id.to_string(),
+        })
+    }
+
+    pub fn retry_last_failed_submission(&self) -> Result<CommandResult, ApplicationError> {
+        let state = self.current_state()?;
+        let Some(input) = state.last_submission_input else {
+            return Err(ApplicationError::InvalidPayload(
+                "Es gibt keinen wiederholbaren Vorgang".into(),
+            ));
+        };
+        self.start_submission(Some(input))
     }
 
     fn reduce(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
@@ -180,7 +183,7 @@ where
             }
             Err(error) => {
                 self.publisher.publish_event(AppEvent::ActionFailed {
-                    message: error.to_string(),
+                    error: UiError::from_application_error(&error),
                 })?;
                 Err(error)
             }
@@ -191,6 +194,16 @@ where
         &self,
         action: AppAction,
     ) -> Result<CommandResult, ApplicationError> {
+        let result = self.persist_note_action(action);
+        if let Err(error) = &result {
+            self.publisher.publish_event(AppEvent::ActionFailed {
+                error: UiError::from_application_error(error),
+            })?;
+        }
+        result
+    }
+
+    fn persist_note_action(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
         let current = self.current_state()?;
         let message = match action {
             AppAction::SaveNote => {
@@ -237,33 +250,115 @@ where
         Ok(CommandResult { message, state })
     }
 
+    fn start_submission(
+        &self,
+        retry_input: Option<String>,
+    ) -> Result<CommandResult, ApplicationError> {
+        let task_id = format!("task-{}", self.task_sequence.fetch_add(1, Ordering::AcqRel));
+        let cancellation = Arc::new(AtomicBool::new(false));
+        {
+            let active_count = self
+                .cancellations
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Abbruchsperre beschädigt".into()))?
+                .values()
+                .filter(|token| !token.load(Ordering::Acquire))
+                .count();
+            if active_count >= MAX_PARALLEL_TASKS {
+                let error = ApplicationError::InvalidPayload("Task-Limit erreicht".into());
+                self.publisher.publish_event(AppEvent::ActionFailed {
+                    error: UiError {
+                        code: ErrorCode::TaskQueueFull,
+                        severity: ErrorSeverity::Warning,
+                        user_message: error.user_message(),
+                        diagnostic_message: error.diagnostic_message(),
+                        recoverable: true,
+                    },
+                })?;
+                return Err(error);
+            }
+        }
+        let (payload, started) =
+            match self
+                .publisher
+                .begin_submission(task_id.clone(), retry_input, "Übermittlung")
+            {
+                Ok(started) => started,
+                Err(error) => {
+                    self.publisher.publish_event(AppEvent::ActionFailed {
+                        error: UiError::from_application_error(&error),
+                    })?;
+                    return Err(error);
+                }
+            };
+        self.cancellations
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Abbruchsperre beschädigt".into()))?
+            .insert(task_id.clone(), Arc::clone(&cancellation));
+        Self::start_submission_worker(
+            task_id,
+            self.service.clone(),
+            self.publisher.clone(),
+            Arc::clone(&self.cancellations),
+            QueuedSubmission { payload },
+            cancellation,
+        );
+        Ok(started)
+    }
+
     fn start_submission_worker(
+        task_id: String,
         service: AppService<R>,
         publisher: StatePublisher,
-        receiver: Receiver<QueuedSubmission>,
-        cancellation: Arc<std::sync::atomic::AtomicBool>,
+        cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+        queued: QueuedSubmission,
+        cancellation: Arc<AtomicBool>,
     ) {
         thread::spawn(move || {
-            while let Ok(queued) = receiver.recv() {
-                if cancellation.load(std::sync::atomic::Ordering::Acquire) {
-                    let _ = publisher.publish_event(AppEvent::SubmissionCancelled);
-                    continue;
-                }
-                let event = match service.submit(queued.payload) {
-                    Ok(()) => AppEvent::SubmissionSucceeded,
-                    Err(error) => AppEvent::SubmissionFailed {
-                        message: error.to_string(),
-                    },
-                };
-                if cancellation.load(std::sync::atomic::Ordering::Acquire) {
-                    let _ = publisher.publish_event(AppEvent::SubmissionCancelled);
-                    continue;
-                }
-                if let Err(error) = publisher.publish_event(event) {
-                    tracing::error!(%error, "Übermittlungsstatus konnte nicht veröffentlicht werden");
-                }
+            if cancellation.load(Ordering::Acquire) {
+                let _ = publisher.publish_event(AppEvent::SubmissionCancelled {
+                    task_id: task_id.clone(),
+                });
+                remove_cancellation(&cancellations, &task_id);
+                return;
             }
+            let _ = publisher.publish_event(AppEvent::SubmissionProgress {
+                task_id: task_id.clone(),
+                progress: 40,
+            });
+            let event = match service.submit_with_cancellation(queued.payload, &cancellation) {
+                Ok(()) => AppEvent::SubmissionSucceeded {
+                    task_id: task_id.clone(),
+                },
+                Err(_) if cancellation.load(Ordering::Acquire) => AppEvent::SubmissionCancelled {
+                    task_id: task_id.clone(),
+                },
+                Err(error) => AppEvent::SubmissionFailed {
+                    task_id: task_id.clone(),
+                    error: UiError::from_application_error(&error),
+                },
+            };
+            if cancellation.load(Ordering::Acquire) {
+                let _ = publisher.publish_event(AppEvent::SubmissionCancelled {
+                    task_id: task_id.clone(),
+                });
+                remove_cancellation(&cancellations, &task_id);
+                return;
+            }
+            if let Err(error) = publisher.publish_event(event) {
+                tracing::error!(%error, "Übermittlungsstatus konnte nicht veröffentlicht werden");
+            }
+            remove_cancellation(&cancellations, &task_id);
         });
+    }
+}
+
+fn remove_cancellation(cancellations: &Mutex<HashMap<String, Arc<AtomicBool>>>, task_id: &str) {
+    match cancellations.lock() {
+        Ok(mut cancellations) => {
+            cancellations.remove(task_id);
+        }
+        Err(error) => tracing::error!(%error, "Abbruchstatus konnte nicht bereinigt werden"),
     }
 }
 
@@ -273,13 +368,26 @@ struct QueuedSubmission {
 }
 
 impl StatePublisher {
-    fn begin_submission(&self) -> Result<(SubmissionPayload, CommandResult), ApplicationError> {
+    fn begin_submission(
+        &self,
+        task_id: String,
+        retry_input: Option<String>,
+        title: &str,
+    ) -> Result<(SubmissionPayload, CommandResult), ApplicationError> {
         let ((message, input), state) = self.update(None, |state| {
-            if state.busy {
-                return Err(domain::DomainError::InvalidState.into());
+            let input = retry_input.unwrap_or_else(|| state.input.clone());
+            if input.trim().is_empty() {
+                state
+                    .set_field_validation("main.input", Some("Wert ist erforderlich.".to_string()));
+                return Err(domain::DomainError::EmptyValue.into());
             }
-            let input = state.input.clone();
-            let message = AppReducer::apply_event(state, &AppEvent::SubmissionStarted);
+            state.last_submission_input = Some(input.clone());
+            let message = AppReducer::apply_event(
+                state,
+                &AppEvent::SubmissionStarted {
+                    task: TaskState::running(task_id, title),
+                },
+            );
             Ok((message, input))
         })?;
         Ok((
@@ -588,25 +696,20 @@ mod tests {
     }
 
     #[test]
-    fn state_store_publishes_asynchronous_submission_failure() {
+    fn state_store_publishes_inline_validation_failure() {
         let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
 
-        let result = store.submit().unwrap();
-        assert_eq!(result.state.status, domain::AppStatus::Busy);
-        assert_eq!(
-            updates
-                .recv_timeout(Duration::from_secs(1))
-                .unwrap()
-                .state
-                .status,
-            domain::AppStatus::Busy
-        );
+        store.submit().unwrap_err();
         let failed = updates.recv_timeout(Duration::from_secs(1)).unwrap();
         assert_eq!(failed.state.status, domain::AppStatus::Error);
         assert_eq!(
             failed.state.error_message.as_deref(),
-            Some("Domänenfehler: Wert darf nicht leer sein")
+            Some("Bitte füllen Sie das Pflichtfeld aus.")
+        );
+        assert_eq!(
+            failed.state.validation_message("main.input"),
+            Some("Wert ist erforderlich.")
         );
 
         let state = store.current_state().unwrap();
@@ -614,7 +717,7 @@ mod tests {
         assert_eq!(state.status, domain::AppStatus::Error);
         assert_eq!(
             state.error_message.as_deref(),
-            Some("Domänenfehler: Wert darf nicht leer sein")
+            Some("Bitte füllen Sie das Pflichtfeld aus.")
         );
     }
 
@@ -640,17 +743,84 @@ mod tests {
                 .status,
             domain::AppStatus::Busy
         );
-        assert_eq!(
-            updates
-                .recv_timeout(Duration::from_secs(1))
-                .unwrap()
-                .state
-                .status,
-            domain::AppStatus::Success
-        );
+        let final_update = wait_for_status(&updates, domain::AppStatus::Success);
+        assert_eq!(final_update.status, domain::AppStatus::Success);
         let state = store.current_state().unwrap();
         assert_eq!(state.status, domain::AppStatus::Success);
         assert!(!state.busy);
+    }
+
+    #[test]
+    fn submissions_have_task_ids_and_can_run_in_parallel() {
+        let repository = BlockingRepository::default();
+        let store = AppStateStore::new(AppService::with_dependencies(
+            repository.clone(),
+            FixedClock {
+                now: fixed_time(),
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+            FixedIdGenerator,
+        ));
+        store
+            .dispatch(AppAction::SetInput {
+                value: "Erster Wert".into(),
+            })
+            .unwrap();
+
+        let first = store.submit().unwrap();
+        let second = store.submit().unwrap();
+
+        assert_ne!(first.state.active_task_id, second.state.active_task_id);
+        let state = store.current_state().unwrap();
+        assert_eq!(state.tasks.len(), 2);
+        assert!(state.tasks.iter().all(TaskState::is_active));
+        let (lock, changed) = &*repository.gate;
+        let mut repository_state = lock.lock().unwrap();
+        repository_state.released = true;
+        changed.notify_all();
+    }
+
+    #[test]
+    fn failed_submission_publishes_structured_retryable_error() {
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
+        let updates = store.subscribe().unwrap();
+
+        store.submit().unwrap_err();
+        let state = wait_for_status(&updates, domain::AppStatus::Error);
+
+        let error = state.ui_error.as_ref().expect("structured error");
+        assert_eq!(error.code, ErrorCode::ValidationRequired);
+        assert_eq!(error.user_message, "Bitte füllen Sie das Pflichtfeld aus.");
+        assert!(error.recoverable);
+        assert!(!state.can_retry());
+    }
+
+    #[test]
+    fn retry_uses_last_failed_submission_payload() {
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
+        store
+            .dispatch(AppAction::SetInput {
+                value: "Wiederholen".into(),
+            })
+            .unwrap();
+        store.submit().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(
+            store.current_state().unwrap().status,
+            domain::AppStatus::Success
+        );
+
+        store
+            .publisher
+            .publish_event(AppEvent::SubmissionFailed {
+                task_id: "task-1".into(),
+                error: UiError::task_failed("simulierter Fehler".into()),
+            })
+            .unwrap();
+
+        store.dispatch(AppAction::RetryLastFailedTask).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(store.service().list_records().unwrap().len(), 2);
     }
 
     #[test]
@@ -720,14 +890,8 @@ mod tests {
         drop(state);
 
         submit_thread.join().unwrap();
-        assert_eq!(
-            updates
-                .recv_timeout(Duration::from_secs(1))
-                .unwrap()
-                .state
-                .status,
-            domain::AppStatus::Success
-        );
+        let final_update = wait_for_status(&updates, domain::AppStatus::Success);
+        assert_eq!(final_update.status, domain::AppStatus::Success);
         assert_eq!(repository.list_submissions().unwrap().len(), 1);
     }
 
@@ -744,6 +908,16 @@ mod tests {
 
         assert!(updates.try_recv().is_err());
         assert_eq!(store.current_state().unwrap().revision, revision);
+    }
+
+    fn wait_for_status(updates: &Receiver<StateUpdate>, expected: domain::AppStatus) -> AppState {
+        for _ in 0..8 {
+            let update = updates.recv_timeout(Duration::from_secs(1)).unwrap();
+            if update.state.status == expected {
+                return update.state;
+            }
+        }
+        panic!("status {expected:?} was not published");
     }
 
     #[test]
@@ -887,7 +1061,11 @@ mod tests {
         assert_eq!(state.status, domain::AppStatus::Error);
         assert_eq!(
             state.error_message.as_deref(),
-            Some(error.to_string().as_str())
+            Some(error.user_message().as_str())
+        );
+        assert_eq!(
+            state.ui_error.as_ref().map(|error| error.code),
+            Some(ErrorCode::InvalidPayload)
         );
     }
 }

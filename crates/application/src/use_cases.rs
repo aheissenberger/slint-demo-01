@@ -2,7 +2,8 @@ use crate::ApplicationError;
 use chrono::{DateTime, Utc};
 use domain::{AppId, AppSettings, SubmissionRecord, SubmissionValue};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::{atomic::AtomicBool, Arc};
 use uuid::{NoContext, Timestamp, Uuid};
 
 pub trait AppRepository {
@@ -78,7 +79,25 @@ where
     }
 
     pub fn submit(&self, payload: SubmissionPayload) -> Result<(), ApplicationError> {
+        self.submit_with_cancellation(payload, &AtomicBool::new(false))
+    }
+
+    pub fn submit_with_cancellation(
+        &self,
+        payload: SubmissionPayload,
+        cancellation: &AtomicBool,
+    ) -> Result<(), ApplicationError> {
+        if cancellation.load(Ordering::Acquire) {
+            return Err(ApplicationError::InvalidPayload(
+                "Vorgang wurde abgebrochen".into(),
+            ));
+        }
         let settings = self.repository.load_settings()?;
+        if cancellation.load(Ordering::Acquire) {
+            return Err(ApplicationError::InvalidPayload(
+                "Vorgang wurde abgebrochen".into(),
+            ));
+        }
         let value = SubmissionValue::new(payload.value)?;
         let created_at = self.clock.now();
 
@@ -90,6 +109,11 @@ where
             active: settings.enabled,
         };
 
+        if cancellation.load(Ordering::Acquire) {
+            return Err(ApplicationError::InvalidPayload(
+                "Vorgang wurde abgebrochen".into(),
+            ));
+        }
         self.repository.save_submission(record)
     }
 

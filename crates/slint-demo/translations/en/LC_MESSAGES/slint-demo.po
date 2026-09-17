@@ -254,6 +254,56 @@ msgctxt "AboutDialog"
 msgid "Schließen"
 msgstr "Close"
 
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Kritischer Fehler"
+msgstr "Critical error"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Fehlermeldung"
+msgstr "Error message"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Fehlerdiagnose"
+msgstr "Error diagnostics"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Validierung des Notiztitels"
+msgstr "Note title validation"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Validierung des Notizinhalts"
+msgstr "Note content validation"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Erneut versuchen"
+msgstr "Try again"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Hinweis schließen"
+msgstr "Close notice"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Keine Hintergrundvorgänge"
+msgstr "No background tasks"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Hintergrundvorgänge"
+msgstr "Background tasks"
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Validierung der Haupteingabe"
+msgstr "Main input validation"
+
 #: ui/screens/settings-dialog.slint:27 ui/screens/settings-dialog.slint:35
 msgctxt "SettingsDialog"
 msgid "Einstellungen"

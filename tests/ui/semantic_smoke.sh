@@ -2,6 +2,14 @@
 set -euo pipefail
 
 base_url="${AGENT_API_URL:-http://127.0.0.1:8080}"
+curl --fail --silent \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"reset","arguments":{}}' \
+  "$base_url/agent/command" >/dev/null
+curl --fail --silent \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"new_note","arguments":{}}' \
+  "$base_url/agent/command" >/dev/null
 initial="$(curl --fail --silent "$base_url/agent/ui")"
 printf '%s' "$initial" | jq --exit-status \
   'any(.elements[]; .id == "main.input" and .role == "textbox") and
@@ -16,7 +24,7 @@ disabled_submit_status="${disabled_submit_response##*$'\n'}"
 disabled_submit_body="${disabled_submit_response%$'\n'*}"
 [[ "$disabled_submit_status" == "400" ]]
 printf '%s' "$disabled_submit_body" | jq --exit-status \
-  '.error.code == "invalid_input" and (.error.message | contains("Element ist deaktiviert"))' >/dev/null
+  '.error.code == "invalid_payload" and (.error.message | contains("Element ist deaktiviert"))' >/dev/null
 
 curl --fail --silent \
   -H 'Content-Type: application/json' \
@@ -45,7 +53,7 @@ blocked_input_status="${blocked_input_response##*$'\n'}"
 blocked_input_body="${blocked_input_response%$'\n'*}"
 [[ "$blocked_input_status" == "400" ]]
 printf '%s' "$blocked_input_body" | jq --exit-status \
-  '.error.code == "invalid_input" and (.error.message | contains("Element ist deaktiviert"))' >/dev/null
+  '.error.code == "invalid_payload" and (.error.message | contains("Element ist deaktiviert"))' >/dev/null
 
 curl --fail --silent \
   -H 'Content-Type: application/json' \

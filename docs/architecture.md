@@ -42,6 +42,31 @@ deletes the selected note. The former submission demo remains as a secondary
 agent-testing section so existing semantic test paths continue to exercise the
 shared state/update pipeline.
 
+## Error, validation, and task flows
+
+The application layer now separates user-facing recovery text from developer
+diagnostics. `ApplicationError` exposes a stable `ErrorCode`, severity,
+recoverability flag, localized user message, and diagnostic message. The live
+`AppState` carries the currently visible `UiError`, field-level
+`FieldValidation` entries, and the active background task list. Slint renders
+recoverable problems as an inline alert with retry/dismiss actions; critical
+data errors are surfaced through a modal alert dialog.
+
+Inline validation is non-blocking: field edits update validation state without
+running persistence, while disabled buttons and command errors still enforce
+the same domain rules. Repository and migration failures are classified
+separately from invalid input. Corrupt or incompatible SQLite data maps to a
+recovery-required error so the UI and logs can guide the user without exposing
+raw adapter diagnostics as product text.
+
+Long-running submission work is represented by explicit task IDs. The store
+tracks multiple concurrently running tasks, per-task progress, cancellation
+tokens, retryability, and the last failed submission payload. `Cancel` targets
+the active task, `Retry` restarts the last retryable failed submission, and
+shutdown requests cancellation for the active operation before the window is
+hidden. Adapter work checks the cancellation token cooperatively at application
+boundaries before expensive or persistent operations are started.
+
 ## Settings persistence
 
 `AppSettings` (domain) now carries a `theme_mode` field. `AppStateStore`
