@@ -90,7 +90,7 @@ jobs:
             APPLE_TEAM_ID \
             APPLE_APP_SPECIFIC_PASSWORD; do
             if [[ -z "${!required_secret}" ]]; then
-              echo "::warning::macOS signing is skipped because ${required_secret} is not configured."
+              echo "::warning::Developer-ID-Signierung wird übersprungen, da ${required_secret} nicht konfiguriert ist. Stattdessen wird ad hoc signiert."
               echo "enabled=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -206,12 +206,21 @@ jobs:
           rm "slint-demo-macos-arm64.zip"
           ditto -c -k --keepParent "slint-demo.app" "slint-demo-macos-arm64.zip"
 
-      - name: Archive unsigned verification app bundle
+      - name: Ad-hoc sign macOS app bundle
+        if: steps.macos-signing.outputs.enabled != 'true'
+        run: |
+          set -euo pipefail
+          codesign --force --deep --sign - \
+            "target/release/bundle/slint-demo.app"
+          codesign --verify --deep --strict --verbose=2 \
+            "target/release/bundle/slint-demo.app"
+
+      - name: Archive ad-hoc signed verification app bundle
         if: steps.macos-signing.outputs.enabled != 'true'
         run: |
           set -euo pipefail
           cd target/release/bundle
-          ditto -c -k --keepParent "slint-demo.app" "slint-demo-macos-arm64-unsigned.zip"
+          ditto -c -k --keepParent "slint-demo.app" "slint-demo-macos-arm64-ad-hoc.zip"
 
       - name: Remove signing materials
         if: always() && steps.signing.outcome == 'success'
@@ -223,6 +232,6 @@ jobs:
       - name: Upload macOS app bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ steps.macos-signing.outputs.enabled == 'true' && 'slint-demo-macos-arm64' || 'slint-demo-macos-arm64-unsigned' }}
-          path: ${{ steps.macos-signing.outputs.enabled == 'true' && 'target/release/bundle/slint-demo-macos-arm64.zip' || 'target/release/bundle/slint-demo-macos-arm64-unsigned.zip' }}
+          name: ${{ steps.macos-signing.outputs.enabled == 'true' && 'slint-demo-macos-arm64' || 'slint-demo-macos-arm64-ad-hoc' }}
+          path: ${{ steps.macos-signing.outputs.enabled == 'true' && 'target/release/bundle/slint-demo-macos-arm64.zip' || 'target/release/bundle/slint-demo-macos-arm64-ad-hoc.zip' }}
           if-no-files-found: error
