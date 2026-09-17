@@ -58,110 +58,138 @@ impl DesktopApp {
     pub fn run() {
         #[cfg(feature = "agent-api")]
         let app = Self::new();
+        let ui = MainWindow::new().unwrap();
+        ui.set_app_version(env!("CARGO_PKG_VERSION").into());
         #[cfg(feature = "agent-api")]
+        Self::configure_agent_api(&ui, &app);
+        #[cfg(not(feature = "agent-api"))]
+        Self::configure_file_picker(&ui);
+        ui.run().unwrap();
+    }
+
+    #[cfg(feature = "agent-api")]
+    fn configure_agent_api(ui: &MainWindow, app: &Self) {
         let api = Arc::clone(&app.agent_api);
-        #[cfg(feature = "agent-api")]
         thread::spawn(move || {
             if let Err(error) = (*api).clone().serve("127.0.0.1:8080") {
                 tracing::error!(%error, "agent API stopped");
             }
         });
-        let ui = MainWindow::new().unwrap();
-        ui.set_app_version(env!("CARGO_PKG_VERSION").into());
-        #[cfg(feature = "agent-api")]
+
         let store = app.agent_api.store();
-        #[cfg(feature = "agent-api")]
         let updates = store.subscribe().expect("state subscription");
-        #[cfg(feature = "agent-api")]
         apply_state(
-            &ui,
+            ui,
             store.current_state().expect("initial application state"),
         );
-        #[cfg(feature = "agent-api")]
-        {
-            let weak = ui.as_weak();
-            thread::spawn(move || {
-                while let Ok(state) = updates.recv() {
-                    if weak
-                        .upgrade_in_event_loop(move |ui| apply_state(&ui, state))
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            });
-        }
+        Self::start_state_sync(ui, updates);
+        Self::configure_input(ui, &store);
+        Self::configure_reset(ui, &store);
+        Self::configure_file_picker(ui, &store);
+        Self::configure_about(ui, &store);
+        Self::configure_submit(ui, &store);
+    }
 
-        #[cfg(feature = "agent-api")]
-        ui.on_input_changed({
-            let store = Arc::clone(&store);
-            move |value| {
-                if let Err(error) = store.dispatch(AppAction::SetInput {
-                    value: value.to_string(),
-                }) {
-                    tracing::error!(%error, "failed to synchronize input");
-                }
-            }
-        });
-
-        #[cfg(feature = "agent-api")]
-        ui.on_reset({
-            let store = Arc::clone(&store);
-            move || {
-                if let Err(error) = store.dispatch(AppAction::Reset) {
-                    tracing::error!(%error, "failed to reset application");
-                }
-            }
-        });
-
-        ui.on_pick_file({
-            let weak = ui.as_weak();
-            #[cfg(feature = "agent-api")]
-            let store = Arc::clone(&store);
-            move || {
-                #[cfg(feature = "agent-api")]
+    #[cfg(feature = "agent-api")]
+    fn start_state_sync(ui: &MainWindow, updates: std::sync::mpsc::Receiver<AppState>) {
+        let weak = ui.as_weak();
+        thread::spawn(move || {
+            while let Ok(state) = updates.recv() {
+                if weak
+                    .upgrade_in_event_loop(move |ui| apply_state(&ui, state))
+                    .is_err()
                 {
-                    if let Err(error) = store.dispatch(AppAction::SelectDevelopmentFile) {
-                        if let Some(ui) = weak.upgrade() {
-                            ui.set_status(format!("Fehler: {error}").into());
-                        }
-                    }
-                }
-                #[cfg(not(feature = "agent-api"))]
-                if let Some(path) = rfd::FileDialog::new().pick_file() {
-                    if let Some(ui) = weak.upgrade() {
-                        ui.set_selected_file(path.to_string_lossy().into_owned().into());
-                    }
+                    break;
                 }
             }
         });
+    }
 
-        #[cfg(feature = "agent-api")]
-        ui.on_about_visibility_changed({
-            let store = Arc::clone(&store);
-            move |open| {
-                let action = if open {
-                    AppAction::OpenAbout
-                } else {
-                    AppAction::CloseAbout
-                };
-                if let Err(error) = store.dispatch(action) {
-                    tracing::error!(%error, "failed to synchronize about dialog");
+    #[cfg(feature = "agent-api")]
+    fn configure_input(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_input_changed(move |value| {
+            if let Err(error) = store.dispatch(AppAction::SetInput {
+                value: value.to_string(),
+            }) {
+                tracing::error!(%error, "failed to synchronize input");
+            }
+        });
+    }
+
+    #[cfg(feature = "agent-api")]
+    fn configure_reset(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_reset(move || {
+            if let Err(error) = store.dispatch(AppAction::Reset) {
+                tracing::error!(%error, "failed to reset application");
+            }
+        });
+    }
+
+    #[cfg(feature = "agent-api")]
+    fn configure_about(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_about_visibility_changed(move |open| {
+            let action = if open {
+                AppAction::OpenAbout
+            } else {
+                AppAction::CloseAbout
+            };
+            if let Err(error) = store.dispatch(action) {
+                tracing::error!(%error, "failed to synchronize about dialog");
+            }
+        });
+    }
+
+    #[cfg(feature = "agent-api")]
+    fn configure_submit(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_submit(move |value: SharedString| {
+            let _ = value;
+            if let Err(error) = store.dispatch(AppAction::Submit) {
+                tracing::error!(%error, "failed to submit value");
+            }
+        });
+    }
+
+    #[cfg(feature = "agent-api")]
+    fn configure_file_picker(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let weak = ui.as_weak();
+        let store = Arc::clone(store);
+        ui.on_pick_file(move || {
+            if let Err(error) = store.dispatch(AppAction::SelectDevelopmentFile) {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_status(format!("Fehler: {error}").into());
                 }
             }
         });
+    }
 
-        #[cfg(feature = "agent-api")]
-        ui.on_submit({
-            let store = Arc::clone(&store);
-            move |value: SharedString| {
-                let _ = value;
-                if let Err(error) = store.dispatch(AppAction::Submit) {
-                    tracing::error!(%error, "failed to submit value");
+    #[cfg(not(feature = "agent-api"))]
+    fn configure_file_picker(ui: &MainWindow) {
+        let weak = ui.as_weak();
+        ui.on_pick_file(move || {
+            if let Some(path) = rfd::FileDialog::new().pick_file() {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_selected_file(path.to_string_lossy().into_owned().into());
                 }
             }
         });
-
-        ui.run().unwrap();
     }
 }

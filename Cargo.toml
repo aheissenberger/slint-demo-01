@@ -24,6 +24,12 @@ unsafe_code = "deny"
 
 [workspace.lints.clippy]
 all = "warn"
+correctness = "warn"
+suspicious = "warn"
+perf = "warn"
+cognitive_complexity = "warn"
+too_many_lines = "warn"
+type_complexity = "warn"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
