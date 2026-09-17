@@ -102,6 +102,13 @@ pub struct NativeNotification {
 }
 
 pub fn show_notification(notification: &NativeNotification) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Err(error) = notify_rust::set_application("com.aheissenberger.slint-demo") {
+            tracing::warn!(%error, "macOS-Bundle-ID für Benachrichtigung konnte nicht gesetzt werden");
+        }
+    }
+
     if let Err(error) = notify_rust::Notification::new()
         .appname("Slint Agent Demo")
         .summary(&notification.title)
