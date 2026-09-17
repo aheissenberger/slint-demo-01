@@ -1,5 +1,5 @@
 [package]
-name = "domain"
+name = "slint-contract"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,6 +9,5 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-serde = { workspace = true }
-thiserror = { workspace = true }
-chrono = { workspace = true }
+slint-interpreter = { version = "1.18", default-features = false, features = ["compat-1-2"] }
+spin_on = "0.1"

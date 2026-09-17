@@ -26,6 +26,18 @@ configured for Intel (`linux/amd64`) hosts.
 
 The DevContainer includes the pinned `actionlint` release used by
 `./scripts/check` to validate GitHub Actions workflow files.
+The development image also installs the pinned `cargo-watch` version used by
+the desktop launcher; Windows packaging pins `cargo-wix` in CI for
+reproducible installer builds. The supported macOS and Windows workflows also
+run the feature-complete test compilation and pinned `cargo-audit` dependency
+scan; Linux is used only for development tooling and is not a release build
+target.
+
+The agent API contract is derived from the Slint source files. The
+`slint-contract` helper compiles `ui/app.slint` with the official Slint
+interpreter, then extracts `agent-id` declarations from the Slint files before
+`scripts/agent-api-check` compares them with the Rust semantic API. This keeps
+the `.slint` files authoritative without relying on a regex-only UI parser.
 
 The desktop process also starts the local agent API on `127.0.0.1:8080`.
 The container starts Xvfb, Openbox, x11vnc, and websockify automatically;

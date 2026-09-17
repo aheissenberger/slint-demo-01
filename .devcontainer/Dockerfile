@@ -21,9 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lldb \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /tmp && curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.98.1 \
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.98.1 \
     && /root/.cargo/bin/rustup component add --toolchain 1.98.1 rustfmt clippy rust-analyzer \
-    && /root/.cargo/bin/cargo install cargo-watch --locked
+    && /root/.cargo/bin/cargo install cargo-watch --version 8.5.3 --locked
 
 ARG ACTIONLINT_VERSION=1.7.7
 RUN set -eux; \

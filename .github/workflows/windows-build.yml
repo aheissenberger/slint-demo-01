@@ -22,7 +22,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.98.1-x86_64-pc-windows-msvc
+          toolchain: 1.98.1
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -31,6 +31,15 @@ jobs:
           shared-key: windows-x86_64
           cache-targets: true
           cache-all-crates: true
+
+      - name: Validate all features
+        run: cargo test --locked --workspace --all-features --no-run
+
+      - name: Audit dependencies
+        shell: pwsh
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --locked
 
       - name: Build release executable
         run: cargo build --locked --release -p slint-demo --no-default-features
@@ -62,7 +71,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Get-Command cargo-wix -ErrorAction SilentlyContinue)) {
-            cargo +1.98.1 install cargo-wix --locked
+            cargo install cargo-wix --version 0.3.8 --locked
             if ($LASTEXITCODE -ne 0) {
               throw "cargo-wix installation failed with exit code $LASTEXITCODE."
             }

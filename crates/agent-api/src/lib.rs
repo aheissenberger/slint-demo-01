@@ -66,6 +66,7 @@ struct RuntimeState {
     status: String,
     busy: bool,
     about_open: bool,
+    revision: u64,
 }
 
 #[derive(Clone)]
@@ -88,6 +89,7 @@ where
                 status: "bereit".to_string(),
                 busy: false,
                 about_open: false,
+                revision: 0,
             })),
         }
     }
@@ -180,10 +182,19 @@ where
                 accessible_label: Some("Schließen".to_string()),
             });
         }
+
         Ok(UiInspectionResponse {
             screen: "main".to_string(),
             elements,
         })
+    }
+
+    pub fn revision(&self) -> Result<u64, ApplicationError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
+        Ok(state.revision)
     }
 
     #[instrument(
@@ -259,6 +270,7 @@ where
                     ApplicationError::Repository("Zustandssperre beschädigt".into())
                 })?;
                 state.input = value;
+                state.revision = state.revision.wrapping_add(1);
                 Ok("Wert aktualisiert".into())
             }
             "click" if action.id == "main.reset" => {
@@ -267,6 +279,7 @@ where
                 })?;
                 state.input.clear();
                 state.status = "bereit".into();
+                state.revision = state.revision.wrapping_add(1);
                 Ok("zurückgesetzt".into())
             }
             "set_value" if action.id == "main.file-picker" => {
@@ -285,6 +298,7 @@ where
                     ApplicationError::Repository("Zustandssperre beschädigt".into())
                 })?;
                 state.development_file_path = value;
+                state.revision = state.revision.wrapping_add(1);
                 Ok("Entwicklungsdateipfad aktualisiert".into())
             }
             "click" if action.id == "main.file-picker" => {
@@ -292,6 +306,7 @@ where
                     ApplicationError::Repository("Zustandssperre beschädigt".into())
                 })?;
                 state.selected_file = state.development_file_path.clone();
+                state.revision = state.revision.wrapping_add(1);
                 Ok("Datei ausgewählt".into())
             }
             "get_value" if action.id == "main.file-picker" => {
@@ -317,6 +332,7 @@ where
                     ApplicationError::Repository("Zustandssperre beschädigt".into())
                 })?;
                 state.about_open = true;
+                state.revision = state.revision.wrapping_add(1);
                 Ok("Info-Dialog geöffnet".into())
             }
             "click" if action.id == "about.close" => {
@@ -324,6 +340,7 @@ where
                     ApplicationError::Repository("Zustandssperre beschädigt".into())
                 })?;
                 state.about_open = false;
+                state.revision = state.revision.wrapping_add(1);
                 Ok("Info-Dialog geschlossen".into())
             }
             "get_value" if action.id == "main.input" => {

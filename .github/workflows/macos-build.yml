@@ -22,7 +22,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.98.1-aarch64-apple-darwin
+          toolchain: 1.98.1
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -31,6 +31,14 @@ jobs:
           shared-key: macos-arm64
           cache-targets: true
           cache-all-crates: true
+
+      - name: Validate all features
+        run: cargo test --locked --workspace --all-features --no-run
+
+      - name: Audit dependencies
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --locked
 
       - name: Build release executable
         run: cargo build --locked --release -p slint-demo --no-default-features
@@ -103,6 +111,13 @@ jobs:
           </dict>
           </plist>
           PLIST
+
+      - name: Validate macOS app bundle
+        run: |
+          set -euo pipefail
+          plutil -lint "target/release/bundle/slint-demo.app/Contents/Info.plist"
+          test -x "target/release/bundle/slint-demo.app/Contents/MacOS/slint-demo"
+          file "target/release/bundle/slint-demo.app/Contents/MacOS/slint-demo"
 
       - name: Import Developer ID certificate
         if: github.event_name != 'pull_request'

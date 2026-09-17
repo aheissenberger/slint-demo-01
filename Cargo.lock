@@ -1739,6 +1739,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "i-slint-backend-qt"
+version = "1.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68783b97dcbaf8e4764a872ab3b2dbd9d1d70b03eef36c8a583377958e84552f"
+dependencies = [
+ "const-field-offset",
+ "i-slint-common",
+ "i-slint-core",
+ "i-slint-core-macros",
+ "vtable",
+]
+
+[[package]]
 name = "i-slint-backend-selector"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1747,6 +1760,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "i-slint-backend-linuxkms",
+ "i-slint-backend-qt",
  "i-slint-backend-testing",
  "i-slint-backend-winit",
  "i-slint-common",
@@ -4124,6 +4138,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "slint-contract"
+version = "0.1.0"
+dependencies = [
+ "slint-interpreter",
+ "spin_on",
+]
+
+[[package]]
 name = "slint-demo"
 version = "0.1.0"
 dependencies = [
@@ -4138,6 +4160,29 @@ dependencies = [
  "slint-build",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "slint-interpreter"
+version = "1.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "422ebec94989d2a360b64d27ee94e14306c6481ae29e32bed1f525b0938a4c87"
+dependencies = [
+ "derive_more",
+ "i-slint-backend-linuxkms",
+ "i-slint-backend-selector",
+ "i-slint-backend-winit",
+ "i-slint-common",
+ "i-slint-compiler",
+ "i-slint-core",
+ "i-slint-core-macros",
+ "itertools 0.15.0",
+ "lyon_path",
+ "smol_str 0.3.6",
+ "typed-index-collections",
+ "unicode-segmentation",
+ "vtable",
+ "web-sys",
 ]
 
 [[package]]

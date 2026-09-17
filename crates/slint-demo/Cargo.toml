@@ -5,6 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "slint-demo"
 path = "src/main.rs"
@@ -31,4 +34,4 @@ slint = { workspace = true }
 rfd = { workspace = true }
 
 [build-dependencies]
-slint-build = "1.12"
+slint-build = { workspace = true }

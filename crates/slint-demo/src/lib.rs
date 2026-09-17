@@ -52,16 +52,20 @@ impl DesktopApp {
         let agent_api = Arc::clone(&app.agent_api);
         #[cfg(feature = "agent-api")]
         let sync_timer = Timer::default();
+        #[cfg(feature = "agent-api")]
+        let mut last_revision = 0;
 
         #[cfg(feature = "agent-api")]
         ui.on_input_changed({
             let agent_api = Arc::clone(&agent_api);
             move |value| {
-                let _ = agent_api.execute_ui_action(agent_api::AgentActionRequest {
+                if let Err(error) = agent_api.execute_ui_action(agent_api::AgentActionRequest {
                     action: "set_value".to_string(),
                     id: "main.input".to_string(),
                     value: Some(value.to_string()),
-                });
+                }) {
+                    tracing::error!(%error, "failed to synchronize input");
+                }
             }
         });
 
@@ -69,11 +73,13 @@ impl DesktopApp {
         ui.on_reset({
             let agent_api = Arc::clone(&agent_api);
             move || {
-                let _ = agent_api.execute_ui_action(agent_api::AgentActionRequest {
+                if let Err(error) = agent_api.execute_ui_action(agent_api::AgentActionRequest {
                     action: "click".to_string(),
                     id: "main.reset".to_string(),
                     value: None,
-                });
+                }) {
+                    tracing::error!(%error, "failed to reset application");
+                }
             }
         });
 
@@ -107,11 +113,13 @@ impl DesktopApp {
         ui.on_about_visibility_changed({
             let agent_api = Arc::clone(&agent_api);
             move |open| {
-                let _ = agent_api.execute_ui_action(agent_api::AgentActionRequest {
+                if let Err(error) = agent_api.execute_ui_action(agent_api::AgentActionRequest {
                     action: "click".to_string(),
                     id: if open { "help.about" } else { "about.close" }.to_string(),
                     value: None,
-                });
+                }) {
+                    tracing::error!(%error, "failed to synchronize about dialog");
+                }
             }
         });
 
@@ -132,13 +140,20 @@ impl DesktopApp {
         {
             let weak = ui.as_weak();
             let agent_api = Arc::clone(&app.agent_api);
-            sync_timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
+            sync_timer.start(TimerMode::Repeated, Duration::from_millis(250), move || {
                 let Some(ui) = weak.upgrade() else {
                     return;
                 };
                 if let Ok(state) = agent_api.get_state() {
                     ui.set_status(state.status.into());
                 }
+                let Ok(revision) = agent_api.revision() else {
+                    return;
+                };
+                if revision == last_revision {
+                    return;
+                }
+                last_revision = revision;
                 if let Ok(inspection) = agent_api.inspect_ui() {
                     if let Some(input) = inspection
                         .elements

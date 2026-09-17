@@ -4,3 +4,4 @@ set -euo pipefail
 # The desktop build script invokes slint-build, providing explicit UI compiler validation.
 # Checked with agent-api enabled since that mirrors the dev/test build (scripts/run).
 cargo check -p slint-demo --all-targets --features agent-api
+cargo run --quiet -p slint-contract --bin slint-contract-check -- ui >/dev/null

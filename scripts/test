@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-cargo test --workspace -- --nocapture
+cargo test --workspace --all-features -- --nocapture
