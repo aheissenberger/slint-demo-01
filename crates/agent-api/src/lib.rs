@@ -1,4 +1,4 @@
-use application::{AppCommand, AppService, AppStateStore, ApplicationError};
+use application::{AppAction, AppService, AppStateStore, ApplicationError};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -160,7 +160,7 @@ pub struct AgentApi<S> {
 
 impl<S> AgentApi<S>
 where
-    S: application::ExampleRepository + Clone + Send + Sync + 'static,
+    S: application::AppRepository + Clone + Send + Sync + 'static,
 {
     pub fn new(service: AppService<S>) -> Self {
         Self {
@@ -174,17 +174,17 @@ where
 
     #[instrument(name = "agent.get_state", skip(self), fields(component = "agent-api"))]
     pub fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
-        let snapshot = self.store.snapshot()?;
+        let state = self.store.current_state()?;
         Ok(AgentStateResponse {
-            screen: snapshot.screen,
-            status: snapshot.status,
-            busy: snapshot.busy,
+            screen: state.screen.to_string(),
+            status: state.status.to_string(),
+            busy: state.busy,
         })
     }
 
     #[instrument(name = "agent.inspect_ui", skip(self), fields(component = "agent-api"))]
     pub fn inspect_ui(&self) -> Result<UiInspectionResponse, ApplicationError> {
-        let state = self.store.snapshot()?;
+        let state = self.store.current_state()?;
         let mut elements = vec![
             element(
                 "main.input",
@@ -214,7 +214,7 @@ where
             element(
                 "main.status",
                 true,
-                Some(state.status.clone()),
+                Some(state.status.to_string()),
                 "Anwendungsstatus",
             ),
             element("help.about", true, None, "Über"),
@@ -230,13 +230,13 @@ where
         }
 
         Ok(UiInspectionResponse {
-            screen: "main".to_string(),
+            screen: state.screen.to_string(),
             elements,
         })
     }
 
     pub fn revision(&self) -> Result<u64, ApplicationError> {
-        Ok(self.store.snapshot()?.revision)
+        Ok(self.store.current_state()?.revision)
     }
 
     #[instrument(
@@ -250,11 +250,11 @@ where
     ) -> Result<String, ApplicationError> {
         trace!(command = %request.command, "received command");
         let command = match request.command.as_str() {
-            "submit" => AppCommand::Submit,
-            "reset" => AppCommand::Reset,
-            "open_about" => AppCommand::OpenAbout,
-            "close_about" => AppCommand::CloseAbout,
-            "select_development_file" => AppCommand::SelectDevelopmentFile,
+            "submit" => AppAction::Submit,
+            "reset" => AppAction::Reset,
+            "open_about" => AppAction::OpenAbout,
+            "close_about" => AppAction::CloseAbout,
+            "select_development_file" => AppAction::SelectDevelopmentFile,
             "set_input" => {
                 let value = request
                     .arguments
@@ -262,7 +262,7 @@ where
                     .and_then(|value| value.as_str())
                     .map(str::to_string)
                     .unwrap_or_default();
-                AppCommand::SetInput(value)
+                AppAction::SetInput { value }
             }
             "set_development_file_path" => {
                 let value = request
@@ -272,7 +272,7 @@ where
                     .and_then(|value| value.as_str())
                     .map(str::to_string)
                     .unwrap_or_default();
-                AppCommand::SetDevelopmentFilePath(value)
+                AppAction::SetDevelopmentFilePath { path: value }
             }
             _ => {
                 return Err(ApplicationError::InvalidPayload(format!(
@@ -295,38 +295,40 @@ where
     ) -> Result<String, ApplicationError> {
         match action.action.as_str() {
             "click" if action.id == "main.submit" => {
-                Ok(self.store.dispatch(AppCommand::Submit)?.message)
+                Ok(self.store.dispatch(AppAction::Submit)?.message)
             }
             "set_value" if action.id == "main.input" => Ok(self
                 .store
-                .dispatch(AppCommand::SetInput(action.value.unwrap_or_default()))?
+                .dispatch(AppAction::SetInput {
+                    value: action.value.unwrap_or_default(),
+                })?
                 .message),
             "click" if action.id == "main.reset" => {
-                Ok(self.store.dispatch(AppCommand::Reset)?.message)
+                Ok(self.store.dispatch(AppAction::Reset)?.message)
             }
             "set_value" if action.id == "main.file-picker" => Ok(self
                 .store
-                .dispatch(AppCommand::SetDevelopmentFilePath(
-                    action.value.unwrap_or_default(),
-                ))?
+                .dispatch(AppAction::SetDevelopmentFilePath {
+                    path: action.value.unwrap_or_default(),
+                })?
                 .message),
             "click" if action.id == "main.file-picker" => Ok(self
                 .store
-                .dispatch(AppCommand::SelectDevelopmentFile)?
+                .dispatch(AppAction::SelectDevelopmentFile)?
                 .message),
             "get_value" if action.id == "main.file-picker" => {
-                Ok(self.store.snapshot()?.development_file_path)
+                Ok(self.store.current_state()?.development_file_path)
             }
             "get_value" if action.id == "main.selected-file" => {
-                Ok(self.store.snapshot()?.selected_file)
+                Ok(self.store.current_state()?.selected_file)
             }
             "click" if action.id == "help.about" => {
-                Ok(self.store.dispatch(AppCommand::OpenAbout)?.message)
+                Ok(self.store.dispatch(AppAction::OpenAbout)?.message)
             }
             "click" if action.id == "about.close" => {
-                Ok(self.store.dispatch(AppCommand::CloseAbout)?.message)
+                Ok(self.store.dispatch(AppAction::CloseAbout)?.message)
             }
-            "get_value" if action.id == "main.input" => Ok(self.store.snapshot()?.input),
+            "get_value" if action.id == "main.input" => Ok(self.store.current_state()?.input),
             "focus"
                 if action.id == "main.input"
                     || action.id == "main.submit"
@@ -363,7 +365,7 @@ where
 
 impl<S> AgentService for AgentApi<S>
 where
-    S: application::ExampleRepository + Clone + Send + Sync + 'static,
+    S: application::AppRepository + Clone + Send + Sync + 'static,
 {
     fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
         AgentApi::get_state(self)

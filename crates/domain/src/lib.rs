@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,13 +21,13 @@ impl AppId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExampleSettings {
+pub struct AppSettings {
     pub app_name: String,
     pub server_url: String,
     pub enabled: bool,
 }
 
-impl Default for ExampleSettings {
+impl Default for AppSettings {
     fn default() -> Self {
         Self {
             app_name: "Slint Agent Demo".to_string(),
@@ -37,7 +38,7 @@ impl Default for ExampleSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExampleRecord {
+pub struct SubmissionRecord {
     pub id: AppId,
     pub title: String,
     pub description: String,
@@ -55,22 +56,41 @@ pub enum DomainError {
     EmptyValue,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppStateSnapshot {
-    pub screen: String,
-    pub status: String,
-    pub busy: bool,
-    pub last_updated: DateTime<Utc>,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AppStatus {
+    #[default]
+    Ready,
+    Busy,
+    Success,
+    Error,
 }
 
-impl AppStateSnapshot {
-    pub fn ready() -> Self {
-        Self {
-            screen: "main".to_string(),
-            status: "bereit".to_string(),
-            busy: false,
-            last_updated: Utc::now(),
-        }
+impl fmt::Display for AppStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Ready => "bereit",
+            Self::Busy => "wird ausgeführt",
+            Self::Success => "erfolgreich",
+            Self::Error => "Fehler",
+        };
+        f.write_str(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AppScreen {
+    #[default]
+    Main,
+    About,
+}
+
+impl fmt::Display for AppScreen {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Main => "main",
+            Self::About => "about",
+        };
+        f.write_str(value)
     }
 }
 
@@ -89,8 +109,18 @@ mod tests {
 
     #[test]
     fn default_settings_are_enabled() {
-        let settings = ExampleSettings::default();
+        let settings = AppSettings::default();
         assert!(settings.enabled);
         assert!(!settings.app_name.is_empty());
+    }
+
+    #[test]
+    fn app_status_has_explicit_domain_values() {
+        assert_eq!(AppStatus::Ready.to_string(), "bereit");
+        assert_eq!(AppStatus::Busy.to_string(), "wird ausgeführt");
+        assert_eq!(AppStatus::Success.to_string(), "erfolgreich");
+        assert_eq!(AppStatus::Error.to_string(), "Fehler");
+        assert_eq!(AppScreen::Main.to_string(), "main");
+        assert_eq!(AppScreen::About.to_string(), "about");
     }
 }

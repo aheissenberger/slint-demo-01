@@ -1,155 +1,44 @@
-use chrono::Utc;
-use domain::{AppId, AppStateSnapshot, DomainError, ExampleRecord, ExampleSettings};
-use serde::{Deserialize, Serialize};
-use std::path::Path;
+mod reducer;
+mod use_cases;
+
+pub use reducer::{
+    AppAction, AppReducer, AppState, ApplicationCommand, ApplicationError, CommandResult,
+};
+pub use use_cases::{AppRepository, AppService, SubmissionCommand, SubmissionPayload};
+
+use domain::AppStatus;
 use std::sync::{
     mpsc::{self, Receiver, Sender},
     Arc, Mutex,
 };
-use tracing::{debug, instrument};
-
-pub trait ExampleRepository {
-    fn load_settings(&self) -> Result<ExampleSettings, ApplicationError>;
-    fn save_settings(&self, settings: &ExampleSettings) -> Result<(), ApplicationError>;
-    fn list_records(&self) -> Result<Vec<ExampleRecord>, ApplicationError>;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExampleOperation {
-    pub value: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExampleCommand {
-    pub command: String,
-    pub arguments: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppSnapshot {
-    pub revision: u64,
-    pub screen: String,
-    pub input: String,
-    pub development_file_path: String,
-    pub selected_file: String,
-    pub status: String,
-    pub busy: bool,
-    pub about_open: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AppCommand {
-    SetInput(String),
-    SetDevelopmentFilePath(String),
-    SelectDevelopmentFile,
-    Reset,
-    Submit,
-    OpenAbout,
-    CloseAbout,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandResult {
-    pub message: String,
-    pub snapshot: AppSnapshot,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApplicationCommand {
-    Submit,
-}
-
-impl ApplicationCommand {
-    pub fn parse(value: &str) -> Result<Self, ApplicationError> {
-        match value {
-            "submit" => Ok(Self::Submit),
-            _ => Err(ApplicationError::InvalidPayload(format!(
-                "nicht unterstützter Befehl: {value}"
-            ))),
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ApplicationError {
-    #[error("Domänenfehler: {0}")]
-    Domain(#[from] DomainError),
-    #[error("Repository-Fehler: {0}")]
-    Repository(String),
-    #[error("ungültige Nutzdaten: {0}")]
-    InvalidPayload(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct AppService<R> {
-    repository: R,
-    records: Arc<Mutex<Vec<ExampleRecord>>>,
-}
 
 #[derive(Clone)]
 pub struct AppStateStore<R> {
     service: AppService<R>,
-    state: Arc<Mutex<AppSnapshot>>,
-    subscribers: Arc<Mutex<Vec<Sender<AppSnapshot>>>>,
+    state: Arc<Mutex<AppState>>,
+    subscribers: Arc<Mutex<Vec<Sender<AppState>>>>,
 }
 
 impl<R> AppStateStore<R>
 where
-    R: ExampleRepository + Clone,
+    R: AppRepository + Clone,
 {
     pub fn new(service: AppService<R>) -> Self {
         Self {
             service,
-            state: Arc::new(Mutex::new(AppSnapshot {
-                revision: 0,
-                screen: "main".to_string(),
-                input: String::new(),
-                development_file_path: "/workspace/Cargo.toml".to_string(),
-                selected_file: String::new(),
-                status: "bereit".to_string(),
-                busy: false,
-                about_open: false,
-            })),
+            state: Arc::new(Mutex::new(AppState::new())),
             subscribers: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    pub fn snapshot(&self) -> Result<AppSnapshot, ApplicationError> {
+    pub fn current_state(&self) -> Result<AppState, ApplicationError> {
         self.state
             .lock()
             .map(|state| state.clone())
             .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))
     }
 
-    fn validate_development_file_path(path: &str) -> Result<String, ApplicationError> {
-        let trimmed = path.trim();
-        if trimmed.is_empty() {
-            return Err(ApplicationError::InvalidPayload(
-                "Entwicklungsdateipfad darf nicht leer sein".into(),
-            ));
-        }
-        if trimmed.len() > 4096 {
-            return Err(ApplicationError::InvalidPayload(
-                "Entwicklungsdateipfad überschreitet 4096 Zeichen".into(),
-            ));
-        }
-        if trimmed.contains('\0') {
-            return Err(ApplicationError::InvalidPayload(
-                "Entwicklungsdateipfad enthält ungültige Nullbytes".into(),
-            ));
-        }
-
-        let path = Path::new(trimmed);
-        if path.is_dir() {
-            return Err(ApplicationError::InvalidPayload(
-                "Entwicklungsdateipfad muss auf eine Datei verweisen".into(),
-            ));
-        }
-
-        Ok(trimmed.to_string())
-    }
-
-    pub fn subscribe(&self) -> Result<Receiver<AppSnapshot>, ApplicationError> {
+    pub fn subscribe(&self) -> Result<Receiver<AppState>, ApplicationError> {
         let (sender, receiver) = mpsc::channel();
         self.subscribers
             .lock()
@@ -158,199 +47,104 @@ where
         Ok(receiver)
     }
 
-    pub fn dispatch(&self, command: AppCommand) -> Result<CommandResult, ApplicationError> {
-        let message = match command {
-            AppCommand::SetInput(value) => {
-                if value.len() > 4096 {
-                    return Err(ApplicationError::InvalidPayload(
-                        "Eingabe überschreitet 4096 Zeichen".into(),
-                    ));
-                }
-                self.update(|state| state.input = value)?;
-                "Wert aktualisiert".to_string()
+    pub fn dispatch(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
+        match action {
+            AppAction::Submit => self.execute_submit(),
+            action => {
+                let message = self.update(|state| AppReducer::apply(state, &action))?;
+                Ok(CommandResult {
+                    message,
+                    state: self.current_state()?,
+                })
             }
-            AppCommand::SetDevelopmentFilePath(value) => {
-                let path = Self::validate_development_file_path(&value)?;
-                self.update(|state| state.development_file_path = path)?;
-                "Entwicklungsdateipfad aktualisiert".to_string()
-            }
-            AppCommand::SelectDevelopmentFile => {
-                let path =
-                    Self::validate_development_file_path(&self.snapshot()?.development_file_path)?;
-                self.update(|state| state.selected_file = path)?;
-                "Datei ausgewählt".to_string()
-            }
-            AppCommand::Reset => {
-                self.update(|state| {
-                    state.input.clear();
-                    state.status = "bereit".to_string();
-                })?;
-                "zurückgesetzt".to_string()
-            }
-            AppCommand::OpenAbout => {
-                self.update(|state| state.about_open = true)?;
-                "Info-Dialog geöffnet".to_string()
-            }
-            AppCommand::CloseAbout => {
-                self.update(|state| state.about_open = false)?;
-                "Info-Dialog geschlossen".to_string()
-            }
-            AppCommand::Submit => {
-                let value = self.service.validate_input(&self.snapshot()?.input)?;
-                self.update(|state| {
-                    state.busy = true;
-                    state.status = "wird ausgeführt".to_string();
-                })?;
-                let result = self.service.execute_command(ExampleCommand {
-                    command: "submit".to_string(),
-                    arguments: serde_json::json!({ "value": value }),
-                });
-                match result {
-                    Ok(message) => {
-                        self.update(|state| {
-                            state.busy = false;
-                            state.status = "erfolgreich".to_string();
-                        })?;
-                        message
-                    }
-                    Err(error) => {
-                        self.update(|state| {
-                            state.busy = false;
-                            state.status = "Fehler".to_string();
-                        })?;
-                        return Err(error);
-                    }
-                }
-            }
-        };
-
-        Ok(CommandResult {
-            message,
-            snapshot: self.snapshot()?,
-        })
+        }
     }
 
     pub fn service(&self) -> &AppService<R> {
         &self.service
     }
 
-    fn update<F>(&self, update: F) -> Result<(), ApplicationError>
-    where
-        F: FnOnce(&mut AppSnapshot),
-    {
-        let snapshot = {
-            let mut state = self
-                .state
-                .lock()
-                .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
-            let previous = state.clone();
-            update(&mut state);
-            if *state == previous {
-                return Ok(());
+    fn execute_submit(&self) -> Result<CommandResult, ApplicationError> {
+        let value = self.service.validate_input(&self.current_state()?.input)?;
+        self.update(|state| {
+            state.busy = true;
+            state.status = AppStatus::Busy;
+            Ok("wird ausgeführt".to_string())
+        })?;
+
+        let message = match self.service.execute_command(SubmissionCommand {
+            command: "submit".to_string(),
+            arguments: serde_json::json!({ "value": value }),
+        }) {
+            Ok(message) => {
+                self.update(|state| {
+                    state.busy = false;
+                    state.status = AppStatus::Success;
+                    Ok(message.clone())
+                })?;
+                message
             }
-            state.revision = state.revision.wrapping_add(1);
-            state.clone()
+            Err(error) => {
+                self.update(|state| {
+                    state.busy = false;
+                    state.status = AppStatus::Error;
+                    Ok("Fehler".to_string())
+                })?;
+                return Err(error);
+            }
         };
+
+        Ok(CommandResult {
+            message,
+            state: self.current_state()?,
+        })
+    }
+
+    fn update<T, F>(&self, update: F) -> Result<T, ApplicationError>
+    where
+        F: FnOnce(&mut AppState) -> Result<T, ApplicationError>,
+    {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
+        let previous = state.clone();
+        let result = update(&mut state)?;
+        if *state == previous {
+            return Ok(result);
+        }
+
+        state.revision = state.revision.wrapping_add(1);
+        let updated_state = state.clone();
+        drop(state);
+
         let mut subscribers = self
             .subscribers
             .lock()
             .map_err(|_| ApplicationError::Repository("Abonnementsperre beschädigt".into()))?;
-        subscribers.retain(|subscriber| subscriber.send(snapshot.clone()).is_ok());
-        Ok(())
-    }
-}
-
-impl<R> AppService<R>
-where
-    R: ExampleRepository,
-{
-    pub fn new(repository: R) -> Self {
-        Self {
-            repository,
-            records: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    #[instrument(name = "app.load_state", skip(self), fields(component = "app-service"))]
-    pub fn load_state(&self) -> Result<AppStateSnapshot, ApplicationError> {
-        debug!("loading application state");
-        Ok(AppStateSnapshot::ready())
-    }
-
-    #[instrument(
-        name = "app.execute_command",
-        skip(self),
-        fields(component = "app-service")
-    )]
-    pub fn execute_command(&self, command: ExampleCommand) -> Result<String, ApplicationError> {
-        let parsed = ApplicationCommand::parse(&command.command)?;
-        let settings = self.repository.load_settings()?;
-        let value = command
-            .arguments
-            .get("value")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if value.trim().is_empty() {
-            return Err(ApplicationError::InvalidPayload(
-                "Wert darf nicht leer sein".into(),
-            ));
-        }
-
-        let record = ExampleRecord {
-            id: AppId::new(format!(
-                "{}-{}",
-                settings.app_name,
-                Utc::now().timestamp_millis()
-            ))?,
-            title: match parsed {
-                ApplicationCommand::Submit => "submit".to_string(),
-            },
-            description: value.to_string(),
-            created_at: Utc::now(),
-            active: settings.enabled,
-        };
-
-        self.records
-            .lock()
-            .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))?
-            .push(record);
-        Ok("Befehl ausgeführt".into())
-    }
-
-    pub fn list_records(&self) -> Result<Vec<ExampleRecord>, ApplicationError> {
-        self.records
-            .lock()
-            .map(|records| records.clone())
-            .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))
-    }
-
-    pub fn validate_input(&self, value: &str) -> Result<String, ApplicationError> {
-        if value.trim().is_empty() {
-            return Err(ApplicationError::InvalidPayload("Feld erforderlich".into()));
-        }
-
-        Ok(value.trim().to_string())
+        subscribers.retain(|subscriber| subscriber.send(updated_state.clone()).is_ok());
+        Ok(result)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::{ExampleRecord, ExampleSettings};
+    use domain::{AppSettings, SubmissionRecord};
 
     #[derive(Clone)]
     struct FakeRepository;
 
-    impl ExampleRepository for FakeRepository {
-        fn load_settings(&self) -> Result<ExampleSettings, ApplicationError> {
-            Ok(ExampleSettings::default())
+    impl AppRepository for FakeRepository {
+        fn load_settings(&self) -> Result<AppSettings, ApplicationError> {
+            Ok(AppSettings::default())
         }
 
-        fn save_settings(&self, _settings: &ExampleSettings) -> Result<(), ApplicationError> {
+        fn save_settings(&self, _settings: &AppSettings) -> Result<(), ApplicationError> {
             Ok(())
         }
 
-        fn list_records(&self) -> Result<Vec<ExampleRecord>, ApplicationError> {
+        fn list_records(&self) -> Result<Vec<SubmissionRecord>, ApplicationError> {
             Ok(Vec::new())
         }
     }
@@ -359,7 +153,7 @@ mod tests {
     fn submit_command_persists_a_record_in_application_state() {
         let service = AppService::new(FakeRepository);
         service
-            .execute_command(ExampleCommand {
+            .execute_command(SubmissionCommand {
                 command: "submit".into(),
                 arguments: serde_json::json!({"value": "Test"}),
             })
@@ -385,19 +179,23 @@ mod tests {
         let store = AppStateStore::new(AppService::new(FakeRepository));
         let updates = store.subscribe().unwrap();
 
-        store.dispatch(AppCommand::SetInput("Test".into())).unwrap();
+        store
+            .dispatch(AppAction::SetInput {
+                value: "Test".into(),
+            })
+            .unwrap();
 
-        let snapshot = store.snapshot().unwrap();
-        assert_eq!(snapshot.input, "Test");
-        assert_eq!(updates.recv().unwrap(), snapshot);
+        let state = store.current_state().unwrap();
+        assert_eq!(state.input, "Test");
+        assert_eq!(updates.recv().unwrap(), state);
     }
 
     #[test]
     fn state_store_rejects_submit_without_input() {
         let store = AppStateStore::new(AppService::new(FakeRepository));
-        let error = store.dispatch(AppCommand::Submit).unwrap_err();
+        let error = store.dispatch(AppAction::Submit).unwrap_err();
         assert!(error.to_string().contains("Feld erforderlich"));
-        assert!(!store.snapshot().unwrap().busy);
+        assert!(!store.current_state().unwrap().busy);
     }
 
     #[test]
@@ -405,25 +203,27 @@ mod tests {
         let store = AppStateStore::new(AppService::new(FakeRepository));
         let updates = store.subscribe().unwrap();
 
-        store.dispatch(AppCommand::OpenAbout).unwrap();
+        store.dispatch(AppAction::OpenAbout).unwrap();
         updates.recv().unwrap();
-        let revision = store.snapshot().unwrap().revision;
+        let revision = store.current_state().unwrap().revision;
 
-        store.dispatch(AppCommand::OpenAbout).unwrap();
+        store.dispatch(AppAction::OpenAbout).unwrap();
 
         assert!(updates.try_recv().is_err());
-        assert_eq!(store.snapshot().unwrap().revision, revision);
+        assert_eq!(store.current_state().unwrap().revision, revision);
     }
 
     #[test]
     fn state_store_rejects_directory_paths_for_the_dev_file_picker() {
         let store = AppStateStore::new(AppService::new(FakeRepository));
         let error = store
-            .dispatch(AppCommand::SetDevelopmentFilePath("/workspace".into()))
+            .dispatch(AppAction::SetDevelopmentFilePath {
+                path: "/workspace".into(),
+            })
             .unwrap_err();
         assert!(error.to_string().contains("muss auf eine Datei verweisen"));
         assert_eq!(
-            store.snapshot().unwrap().development_file_path,
+            store.current_state().unwrap().development_file_path,
             "/workspace/Cargo.toml"
         );
     }

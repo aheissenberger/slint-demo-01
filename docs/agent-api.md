@@ -106,7 +106,7 @@ method not found, `-32602` invalid parameters, and `-32603` internal error).
 JSON-producing tools also include `structuredContent` alongside their readable
 text content.
 
-The desktop adapter subscribes to application snapshots and forwards each
+The desktop adapter subscribes to application state updates and forwards each
 update directly to Slint with `upgrade_in_event_loop`, which wakes the UI event
 loop. There is no synchronization polling timer. This means `set_value`,
 `click`, and application commands can be followed by visual verification
@@ -117,10 +117,10 @@ without creating a second UI state.
 The application store in `crates/application` is the single source of truth
 for state used by both the rendered Slint window and the agent API. Human UI
 callbacks and agent actions are translated into the same typed
-`AppCommand` values. The store publishes snapshots to the Slint adapter, so
+`AppAction` values. The store publishes each new state to the Slint adapter, so
 the agent API no longer owns a duplicate UI state or relies on inspecting its
 own state to synchronize the window. No-op transitions do not increment the
-revision or publish another snapshot, preventing feedback when a rendered
+revision or publish another update, preventing feedback when a rendered
 popup reports its already-current visibility back to the store.
 
 The agent-facing state is intentionally in-memory only: it resets to defaults on

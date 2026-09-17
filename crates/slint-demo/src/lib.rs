@@ -1,7 +1,7 @@
 #[cfg(feature = "agent-api")]
 use agent_api::AgentApi;
 #[cfg(feature = "agent-api")]
-use application::{AppCommand, AppSnapshot};
+use application::{AppAction, AppState};
 #[cfg(feature = "agent-api")]
 use infrastructure::initialize_repository;
 use slint::ComponentHandle;
@@ -13,16 +13,16 @@ use std::{sync::Arc, thread};
 slint::include_modules!();
 
 #[cfg(feature = "agent-api")]
-fn apply_snapshot(ui: &MainWindow, snapshot: AppSnapshot) {
-    ui.set_status(snapshot.status.into());
-    if ui.get_input_value().as_str() != snapshot.input {
-        ui.set_input_value(snapshot.input.into());
+fn apply_state(ui: &MainWindow, state: AppState) {
+    ui.set_status(state.status.to_string().into());
+    if ui.get_input_value().as_str() != state.input {
+        ui.set_input_value(state.input.into());
     }
-    if ui.get_selected_file().as_str() != snapshot.selected_file {
-        ui.set_selected_file(snapshot.selected_file.into());
+    if ui.get_selected_file().as_str() != state.selected_file {
+        ui.set_selected_file(state.selected_file.into());
     }
-    if ui.get_about_visible() != snapshot.about_open {
-        if snapshot.about_open {
+    if ui.get_about_visible() != state.about_open {
+        if state.about_open {
             ui.invoke_show_about();
         } else {
             ui.invoke_hide_about();
@@ -73,14 +73,17 @@ impl DesktopApp {
         #[cfg(feature = "agent-api")]
         let updates = store.subscribe().expect("state subscription");
         #[cfg(feature = "agent-api")]
-        apply_snapshot(&ui, store.snapshot().expect("initial application state"));
+        apply_state(
+            &ui,
+            store.current_state().expect("initial application state"),
+        );
         #[cfg(feature = "agent-api")]
         {
             let weak = ui.as_weak();
             thread::spawn(move || {
-                while let Ok(snapshot) = updates.recv() {
+                while let Ok(state) = updates.recv() {
                     if weak
-                        .upgrade_in_event_loop(move |ui| apply_snapshot(&ui, snapshot))
+                        .upgrade_in_event_loop(move |ui| apply_state(&ui, state))
                         .is_err()
                     {
                         break;
@@ -93,7 +96,9 @@ impl DesktopApp {
         ui.on_input_changed({
             let store = Arc::clone(&store);
             move |value| {
-                if let Err(error) = store.dispatch(AppCommand::SetInput(value.to_string())) {
+                if let Err(error) = store.dispatch(AppAction::SetInput {
+                    value: value.to_string(),
+                }) {
                     tracing::error!(%error, "failed to synchronize input");
                 }
             }
@@ -103,7 +108,7 @@ impl DesktopApp {
         ui.on_reset({
             let store = Arc::clone(&store);
             move || {
-                if let Err(error) = store.dispatch(AppCommand::Reset) {
+                if let Err(error) = store.dispatch(AppAction::Reset) {
                     tracing::error!(%error, "failed to reset application");
                 }
             }
@@ -116,7 +121,7 @@ impl DesktopApp {
             move || {
                 #[cfg(feature = "agent-api")]
                 {
-                    if let Err(error) = store.dispatch(AppCommand::SelectDevelopmentFile) {
+                    if let Err(error) = store.dispatch(AppAction::SelectDevelopmentFile) {
                         if let Some(ui) = weak.upgrade() {
                             ui.set_status(format!("Fehler: {error}").into());
                         }
@@ -135,12 +140,12 @@ impl DesktopApp {
         ui.on_about_visibility_changed({
             let store = Arc::clone(&store);
             move |open| {
-                let command = if open {
-                    AppCommand::OpenAbout
+                let action = if open {
+                    AppAction::OpenAbout
                 } else {
-                    AppCommand::CloseAbout
+                    AppAction::CloseAbout
                 };
-                if let Err(error) = store.dispatch(command) {
+                if let Err(error) = store.dispatch(action) {
                     tracing::error!(%error, "failed to synchronize about dialog");
                 }
             }
@@ -151,7 +156,7 @@ impl DesktopApp {
             let store = Arc::clone(&store);
             move |value: SharedString| {
                 let _ = value;
-                if let Err(error) = store.dispatch(AppCommand::Submit) {
+                if let Err(error) = store.dispatch(AppAction::Submit) {
                     tracing::error!(%error, "failed to submit value");
                 }
             }

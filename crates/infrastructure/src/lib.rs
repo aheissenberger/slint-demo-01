@@ -1,25 +1,25 @@
-use application::{AppService, ApplicationError, ExampleRepository};
-use domain::{ExampleRecord, ExampleSettings};
+use application::{AppRepository, AppService, ApplicationError};
+use domain::{AppSettings, SubmissionRecord};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MemoryRepository {
-    settings: ExampleSettings,
-    records: Vec<ExampleRecord>,
+    settings: AppSettings,
+    records: Vec<SubmissionRecord>,
 }
 
-impl ExampleRepository for MemoryRepository {
-    fn load_settings(&self) -> Result<ExampleSettings, ApplicationError> {
+impl AppRepository for MemoryRepository {
+    fn load_settings(&self) -> Result<AppSettings, ApplicationError> {
         Ok(self.settings.clone())
     }
 
-    fn save_settings(&self, settings: &ExampleSettings) -> Result<(), ApplicationError> {
+    fn save_settings(&self, settings: &AppSettings) -> Result<(), ApplicationError> {
         let _ = settings;
         Ok(())
     }
 
-    fn list_records(&self) -> Result<Vec<ExampleRecord>, ApplicationError> {
+    fn list_records(&self) -> Result<Vec<SubmissionRecord>, ApplicationError> {
         Ok(self.records.clone())
     }
 }
