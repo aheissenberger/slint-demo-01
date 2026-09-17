@@ -138,7 +138,8 @@ uploads `slint-demo.exe` as the `slint-demo-windows-x86_64` workflow artifact.
 It then packages the binary into an MSI installer using
 [cargo-wix](https://github.com/volks73/cargo-wix) and the WiX Toolset, and
 uploads it as the `slint-demo-windows-x86_64-installer` artifact. The German
-installer places the app under Program Files, adds a Start Menu shortcut, and
+installer places the app under `%ProgramFiles%\Slint Agent Desktop\bin`, adds a
+Start Menu shortcut, and
 supports upgrade/uninstall via the standard Windows "Apps & Features" list; it
 targets Windows 10 and later. The WiX source lives in
 `crates/slint-demo/wix/main.wxs` (generated with `cargo wix init` and then
@@ -149,7 +150,7 @@ as the installer's license dialog content. Regenerate the WiX template with
 the Start Menu shortcut edit, German language settings, German license text,
 and the `$(sys.SOURCEFILEDIR)License.rtf` source paths afterward since
 `init --force` overwrites `main.wxs`.
-The Windows workflow runs on pushes to `main` and pull requests. The macOS
+The Windows workflow runs on pushes to `master` and pull requests. The macOS
 workflow is a secondary verification build for those events and creates
 unsigned inspection artifacts. For `v*` tags it signs and notarizes only when
 the complete Apple signing configuration, including `APPLE_ID`, is available;

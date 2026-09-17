@@ -74,7 +74,7 @@ See the architecture and docs folders for the intended production structure.
 ## macOS validation builds
 
 The macOS workflow is a secondary verification build for pull requests and
-pushes to `main`. It produces the unsigned
+pushes to `master`. It produces the unsigned
 `slint-demo-macos-arm64-unsigned` artifact for CI inspection. For `v*` tags,
 it signs and notarizes a distribution only when its complete Apple signing
 configuration is available; otherwise it emits the unsigned artifact and a CI

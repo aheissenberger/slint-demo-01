@@ -58,9 +58,17 @@ jobs:
 
       - name: Ensure cargo-wix is available
         shell: pwsh
+        env:
+          CARGO_WIX_VERSION: "0.3.8"
         run: |
-          if (-not (Get-Command cargo-wix -ErrorAction SilentlyContinue)) {
-            cargo install cargo-wix --version 0.3.8 --locked
+          $installed = $null
+          if (Get-Command cargo-wix -ErrorAction SilentlyContinue) {
+            # A cached ~/.cargo/bin may carry a different cargo-wix build, so the
+            # pinned version has to be verified instead of assumed.
+            $installed = (cargo wix --version) -split '\s+' | Select-Object -Last 1
+          }
+          if ($installed -ne $env:CARGO_WIX_VERSION) {
+            cargo install cargo-wix --version $env:CARGO_WIX_VERSION --locked --force
             if ($LASTEXITCODE -ne 0) {
               throw "cargo-wix installation failed with exit code $LASTEXITCODE."
             }
@@ -68,14 +76,20 @@ jobs:
           cargo wix --version
 
       - name: Build Windows installer (MSI)
-        run: cargo wix --package slint-demo --culture de-DE --nocapture --output target/wix/slint-demo.msi
+        shell: pwsh
+        run: |
+          # --no-build reuses the release binary produced above with
+          # --no-default-features, so the MSI never bundles the agent-api server.
+          cargo wix --package slint-demo --culture de-DE --nocapture --no-build --output target/wix/slint-demo.msi
 
       - name: Smoke-test unsigned Windows installer and EXE
         shell: pwsh
         run: |
           $installer = Resolve-Path target/wix/slint-demo.msi
-          $application = Join-Path $env:ProgramFiles 'slint-demo\bin\slint-demo.exe'
+          # Must match APPLICATIONFOLDER/Bin in crates/slint-demo/wix/main.wxs.
+          $application = Join-Path $env:ProgramFiles 'Slint Agent Desktop\bin\slint-demo.exe'
           $smokeProcess = $null
+          $uninstallFailure = $null
 
           $installProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
             '/i', $installer, '/qn', '/norestart'
@@ -83,11 +97,11 @@ jobs:
           if ($installProcess.ExitCode -ne 0) {
             throw "MSI installation failed with exit code $($installProcess.ExitCode)."
           }
-          if (-not (Test-Path $application -PathType Leaf)) {
-            throw "Installed application was not found at $application."
-          }
 
           try {
+            if (-not (Test-Path $application -PathType Leaf)) {
+              throw "Installed application was not found at $application."
+            }
             $smokeProcess = Start-Process -FilePath $application -PassThru
             Start-Sleep -Seconds 5
             if ($smokeProcess.HasExited) {
@@ -102,18 +116,29 @@ jobs:
               '/x', $installer, '/qn', '/norestart'
             )
             if ($uninstallProcess.ExitCode -ne 0) {
-              throw "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode)."
+              $uninstallFailure = "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode)."
+            } elseif (Test-Path $application) {
+              $uninstallFailure = "Installed application remained after MSI uninstallation."
             }
-            if (Test-Path $application) {
-              throw "Installed application remained after MSI uninstallation."
-            }
+          }
+
+          # Reached only when the smoke test itself succeeded, so a cleanup
+          # failure is reported without masking an earlier error.
+          if ($uninstallFailure) {
+            throw $uninstallFailure
           }
 
       - name: Generate Windows SBOM and checksums
         shell: pwsh
         run: |
           cargo install cargo-cyclonedx --version 0.5.9 --locked
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo-cyclonedx installation failed with exit code $LASTEXITCODE."
+          }
           cargo cyclonedx --format json --all --all-features --target all
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo-cyclonedx failed with exit code $LASTEXITCODE."
+          }
 
           $artifactDir = New-Item -ItemType Directory -Force target/release-artifacts/windows-x86_64
           Copy-Item target/release/slint-demo.exe $artifactDir
