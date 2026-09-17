@@ -27,14 +27,18 @@ pub struct RuntimeStorage {
 
 impl RuntimeStorage {
     pub fn open() -> io::Result<Self> {
-        let project_directories = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
+        Self::at(Self::default_directory()?)
+    }
+
+    fn default_directory() -> io::Result<PathBuf> {
+        ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
                     "Betriebssystemdatenverzeichnis konnte nicht bestimmt werden",
                 )
-            })?;
-        Self::at(project_directories.data_local_dir().join(RUNTIME_DIRECTORY))
+            })
+            .map(|directories| directories.data_local_dir().join(RUNTIME_DIRECTORY))
     }
 
     fn at(directory: PathBuf) -> io::Result<Self> {
@@ -164,5 +168,22 @@ mod tests {
 
         drop(first_instance);
         fs::remove_dir_all(directory).expect("remove temporary runtime directory");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn default_runtime_directory_uses_windows_local_app_data() {
+        let local_app_data =
+            PathBuf::from(std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA must be set"));
+        let expected = local_app_data
+            .join(ORGANIZATION)
+            .join(APPLICATION)
+            .join("data")
+            .join(RUNTIME_DIRECTORY);
+
+        assert_eq!(
+            RuntimeStorage::default_directory().expect("runtime directory"),
+            expected
+        );
     }
 }

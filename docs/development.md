@@ -68,6 +68,14 @@ persistente Anwendungsdaten vorgesehene Ordner unter `Application Support`
 überein. `SLINT_DEMO_DATA_DIR` kann den Datenordner weiterhin gezielt für
 Tests und verwaltete Installationen überschreiben.
 
+Unter Windows 10 und 11 wird der Pfad nicht aus einem fest codierten
+Benutzerprofil zusammengesetzt, sondern über den Windows-Known-Folder
+`FOLDERID_LocalAppData` ermittelt. Die lokale Datenbank, der Fensterzustand und
+die Prozesssperre sind gerätebezogene Daten und liegen deshalb bewusst unter
+`%LOCALAPPDATA%` statt im roamingfähigen `%APPDATA%`. Der MSI verwaltet nur
+Programmdateien unter `%ProgramFiles%`; Updates und Deinstallation verändern
+die persönlichen Anwendungsdaten nicht.
+
 - `instance.lock` stellt sicher, dass nur eine Desktop-Instanz gleichzeitig
   läuft. Ein zweiter Start beendet sich ohne eine weitere Benutzeroberfläche.
 - `window-state.json` speichert Größe und Position des Hauptfensters. Auf

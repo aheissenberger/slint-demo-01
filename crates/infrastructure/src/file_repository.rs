@@ -420,4 +420,17 @@ mod tests {
         .unwrap();
         assert_eq!(repo.load_settings().unwrap().theme_mode, "dark");
     }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn default_data_directory_uses_windows_local_app_data() {
+        let local_app_data =
+            PathBuf::from(std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA must be set"));
+        let expected = local_app_data
+            .join("aheissenberger")
+            .join("slint-demo")
+            .join("data");
+
+        assert_eq!(FileRepository::default_data_dir(), expected);
+    }
 }
