@@ -63,6 +63,7 @@ struct RuntimeState {
     input: String,
     status: String,
     busy: bool,
+    about_open: bool,
 }
 
 #[derive(Clone)]
@@ -82,6 +83,7 @@ where
                 input: String::new(),
                 status: "ready".to_string(),
                 busy: false,
+                about_open: false,
             })),
         }
     }
@@ -107,38 +109,62 @@ where
             .state
             .lock()
             .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+        let mut elements = vec![
+            AgentElement {
+                id: "main.input".to_string(),
+                role: "textbox".to_string(),
+                enabled: true,
+                value: Some(state.input.clone()),
+                accessible_label: Some("Main input".to_string()),
+            },
+            AgentElement {
+                id: "main.submit".to_string(),
+                role: "button".to_string(),
+                enabled: !state.input.trim().is_empty(),
+                value: None,
+                accessible_label: Some("Submit".to_string()),
+            },
+            AgentElement {
+                id: "main.reset".to_string(),
+                role: "button".to_string(),
+                enabled: true,
+                value: None,
+                accessible_label: Some("Reset".to_string()),
+            },
+            AgentElement {
+                id: "main.status".to_string(),
+                role: "status".to_string(),
+                enabled: true,
+                value: Some(state.status.clone()),
+                accessible_label: Some("Application status".to_string()),
+            },
+            AgentElement {
+                id: "help.about".to_string(),
+                role: "menuitem".to_string(),
+                enabled: true,
+                value: None,
+                accessible_label: Some("Über".to_string()),
+            },
+        ];
+        if state.about_open {
+            elements.push(AgentElement {
+                id: "about.dialog".to_string(),
+                role: "dialog".to_string(),
+                enabled: true,
+                value: None,
+                accessible_label: Some("Über Slint Agent Desktop".to_string()),
+            });
+            elements.push(AgentElement {
+                id: "about.close".to_string(),
+                role: "button".to_string(),
+                enabled: true,
+                value: None,
+                accessible_label: Some("Schließen".to_string()),
+            });
+        }
         Ok(UiInspectionResponse {
             screen: "main".to_string(),
-            elements: vec![
-                AgentElement {
-                    id: "main.input".to_string(),
-                    role: "textbox".to_string(),
-                    enabled: true,
-                    value: Some(state.input.clone()),
-                    accessible_label: Some("Main input".to_string()),
-                },
-                AgentElement {
-                    id: "main.submit".to_string(),
-                    role: "button".to_string(),
-                    enabled: !state.input.trim().is_empty(),
-                    value: None,
-                    accessible_label: Some("Submit".to_string()),
-                },
-                AgentElement {
-                    id: "main.reset".to_string(),
-                    role: "button".to_string(),
-                    enabled: true,
-                    value: None,
-                    accessible_label: Some("Reset".to_string()),
-                },
-                AgentElement {
-                    id: "main.status".to_string(),
-                    role: "status".to_string(),
-                    enabled: true,
-                    value: Some(state.status.clone()),
-                    accessible_label: Some("Application status".to_string()),
-                },
-            ],
+            elements,
         })
     }
 
@@ -226,6 +252,22 @@ where
                 state.input.clear();
                 state.status = "ready".into();
                 Ok("reset".into())
+            }
+            "click" if action.id == "help.about" => {
+                let mut state = self
+                    .state
+                    .lock()
+                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                state.about_open = true;
+                Ok("about opened".into())
+            }
+            "click" if action.id == "about.close" => {
+                let mut state = self
+                    .state
+                    .lock()
+                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                state.about_open = false;
+                Ok("about closed".into())
             }
             "get_value" if action.id == "main.input" => {
                 let value = self
@@ -389,5 +431,51 @@ mod tests {
         })
         .unwrap();
         assert_eq!(api.get_state().unwrap().status, "success");
+    }
+
+    #[test]
+    fn about_dialog_appears_in_semantic_tree_only_while_open() {
+        let api = api();
+        let initial = api.inspect_ui().unwrap();
+        assert!(initial
+            .elements
+            .iter()
+            .any(|element| element.id == "help.about"));
+        assert!(!initial
+            .elements
+            .iter()
+            .any(|element| element.id == "about.dialog"));
+
+        api.execute_ui_action(AgentActionRequest {
+            action: "click".into(),
+            id: "help.about".into(),
+            value: None,
+        })
+        .unwrap();
+        let opened = api.inspect_ui().unwrap();
+        assert!(opened
+            .elements
+            .iter()
+            .any(|element| element.id == "about.dialog"));
+        assert!(
+            opened
+                .elements
+                .iter()
+                .find(|element| element.id == "about.close")
+                .unwrap()
+                .enabled
+        );
+
+        api.execute_ui_action(AgentActionRequest {
+            action: "click".into(),
+            id: "about.close".into(),
+            value: None,
+        })
+        .unwrap();
+        let closed = api.inspect_ui().unwrap();
+        assert!(!closed
+            .elements
+            .iter()
+            .any(|element| element.id == "about.dialog"));
     }
 }

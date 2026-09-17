@@ -64,13 +64,20 @@ The recommended testing loop is `ui_inspect` -> `ui_action` or `app_command` ->
 intent and semantic UI actions only when testing the human-facing UI path.
 
 The adapter binds only to the local API at `127.0.0.1:8080` by default. Set
-`AGENT_API_ADDR` only to another explicitly trusted local endpoint. It is
-included in the development crate binary and is not part of the
-`--no-default-features` desktop production-shaped build.
+`AGENT_API_ADDR` only to another explicitly trusted local endpoint. It ships
+behind the opt-in `agent-api` Cargo feature on `slint-demo`, which is **not**
+part of `default`: a plain `cargo build`/`cargo build --release` never bundles
+this HTTP server. Development and test entry points
+(`scripts/run`, `scripts/doctor`, `.devcontainer/scripts/start-desktop.sh`)
+enable it explicitly with `--features agent-api`; CI release workflows
+additionally build with `--no-default-features` for the shipped desktop
+binaries.
 
 ## Security model
 
-This is a development-only automation surface. Keep the HTTP API loopback
+This is a development-only automation surface, gated behind the opt-in
+`agent-api` Cargo feature (see above) so a production binary never
+unexpectedly exposes a local automation server. Keep the HTTP API loopback
 bound, launch MCP only from a trusted agent process, and do not point
 `AGENT_API_ADDR` at a remote endpoint unless that endpoint provides its own
 authentication and transport security. Logs and screenshots can contain
@@ -114,7 +121,34 @@ second UI state.
   "elements": [
     { "id": "main.input", "role": "textbox", "enabled": true, "value": "" },
     { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Submit" },
-    { "id": "main.status", "role": "status", "enabled": true, "value": "ready" }
+    { "id": "main.status", "role": "status", "enabled": true, "value": "ready" },
+    { "id": "help.about", "role": "menuitem", "enabled": true, "accessible_label": "Über" }
   ]
 }
 ```
+
+## About menu and dialog
+
+The German "Hilfe" menu exposes an "Über" (About) command required by the
+Slint Royalty-free License to disclose the use of Slint from the
+application's top-level menu. `help.about` is always present in the semantic
+tree; clicking it (`ui_action` / `scripts/agent click help.about`) opens the
+dialog, which then adds `about.dialog` (role `dialog`) and `about.close`
+(role `button`) to `ui_inspect` until it is closed
+(`scripts/agent click about.close`). The desktop adapter keeps the visible
+popup and the semantic tree in sync in both directions, so the dialog can be
+opened, inspected, and closed entirely through the agent interface.
+
+## Keeping the UI and agent-api in sync
+
+Every element id used above traces back to an `agent-id` declared in
+`ui/**/*.slint` — either the `agent-id` property on reusable components
+(`FluentButton`, `FluentTextField`) or a `// agent-id: "screen.element"`
+comment marker directly above a built-in element that cannot carry a custom
+property (`MenuItem`, `Text`, `PopupWindow`). `./scripts/agent-api-check`
+(part of `./scripts/check`) statically parses both sides and fails the build
+if a UI `agent-id` has no matching `inspect_ui` element, or if `agent-api`
+references an id no longer declared in the UI. This keeps the semantic
+contract accurate without requiring runtime introspection of Slint's internal
+AccessKit accessibility tree, which is not part of the stable public `slint`
+crate API.

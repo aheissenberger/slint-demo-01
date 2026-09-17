@@ -40,3 +40,50 @@ fn semantic_contract_exposes_stable_controls_and_state_transitions() {
     .expect("submit command");
     assert_eq!(api.get_state().expect("state").status, "success");
 }
+
+#[test]
+fn about_menu_and_dialog_are_part_of_the_stable_semantic_contract() {
+    let api = api();
+    let help_about = api
+        .inspect_ui()
+        .expect("initial UI inspection")
+        .elements
+        .iter()
+        .find(|element| element.id == "help.about")
+        .expect("help.about menu item")
+        .clone();
+    assert_eq!(help_about.role, "menuitem");
+    assert!(help_about.enabled);
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "help.about".into(),
+        value: None,
+    })
+    .expect("open about dialog");
+
+    let opened = api.inspect_ui().expect("UI inspection after opening about");
+    assert!(
+        opened
+            .elements
+            .iter()
+            .any(|element| element.id == "about.dialog"),
+        "about dialog should be present once opened"
+    );
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "about.close".into(),
+        value: None,
+    })
+    .expect("close about dialog");
+
+    let closed = api.inspect_ui().expect("UI inspection after closing about");
+    assert!(
+        !closed
+            .elements
+            .iter()
+            .any(|element| element.id == "about.dialog"),
+        "about dialog should be removed once closed"
+    );
+}

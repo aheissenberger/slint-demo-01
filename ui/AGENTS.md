@@ -46,8 +46,23 @@ before making a visual or interaction change.
 - Every interactive control requires a stable `agent-id`, accessible role,
   accessible label, keyboard access, visible focus, and distinct hover,
   pressed, disabled, and invalid states where applicable.
+- Every interactive control's `agent-id` must have a matching element and
+  action in `crates/agent-api` (see root `AGENTS.md` → "Agent API parity
+  (mandatory)"). A control is not done until it can be inspected and operated
+  through `scripts/agent`/`ui_inspect`/`ui_action` with the same effect as
+  clicking it in the rendered window — no agent-unreachable UI, no UI-only
+  shortcut. Give every control an `agent-id` property, or — for built-in
+  elements that cannot carry one (`MenuItem`, `Text`, `PopupWindow`, ...) — a
+  `// agent-id: "screen.element"` comment directly above it, and run
+  `./scripts/agent-api-check` to confirm it matches `crates/agent-api`.
+- Elements that only exist while visible (popups, dialogs, menus, flyouts)
+  must appear in and disappear from the semantic tree exactly when they are
+  shown or hidden on screen, in both directions: an agent action that opens
+  or closes them must update the real window, and a human interaction that
+  opens or closes them must update `inspect_ui`.
 - Before merging, inspect the semantic tree and exercise each interactive
-  path; a screenshot cannot substitute for keyboard or accessibility checks.
+  path through `scripts/agent`; a screenshot cannot substitute for keyboard,
+  accessibility, or agent-API checks.
 - Never communicate state solely through color, placeholder text, pointer
   position, or translated display text.
 - Keep business rules and platform integration in Rust. Slint only presents
@@ -56,9 +71,11 @@ before making a visual or interaction change.
 ## Required review
 
 Before completing a `.slint` change, run the UI checks required by the root
-`AGENTS.md`, inspect and exercise the semantic tree, and capture a screenshot.
-Review it using every item in `docs/design-system.md`, including the explicit
-baseline diagnosis. Linux/Xvfb rendering validates regressions only; Windows
-rendering is authoritative for Windows fidelity. If a checklist item cannot be
-met, stop and document the tested exception instead of declaring the change
-complete.
+`AGENTS.md`, inspect and exercise the semantic tree via `scripts/agent` (open
+every new popup/dialog/menu through `click`/`set` actions and confirm it via
+`ui`, not just by clicking in a browser), and capture a screenshot with
+`scripts/screenshot`. Review it using every item in `docs/design-system.md`,
+including the explicit baseline diagnosis. Linux/Xvfb rendering validates
+regressions only; Windows rendering is authoritative for Windows fidelity. If
+a checklist item cannot be met, stop and document the tested exception
+instead of declaring the change complete.

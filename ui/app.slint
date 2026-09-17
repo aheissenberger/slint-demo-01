@@ -1,19 +1,77 @@
 import { FluentButton } from "./components/fluent-button.slint";
 import { FluentTextField } from "./components/fluent-text-field.slint";
+import { AboutDialog } from "./screens/about-dialog.slint";
 import { Theme } from "./theme/theme.slint";
 
 export component MainWindow inherits Window {
     in property <string> status: "ready";
+    in property <string> app-version: "0.1.0";
     in-out property <string> input-value: "";
+    out property <bool> about-visible: about-popup.is-open;
     callback submit(string);
     callback input-changed(string);
     callback reset();
+    callback about-visibility-changed(bool);
+
+    public function show-about() {
+        about-popup.show();
+        root.about-visibility-changed(true);
+    }
+
+    public function hide-about() {
+        about-popup.close();
+        root.about-visibility-changed(false);
+    }
 
     title: "Slint Agent Desktop";
     preferred-width: 740px;
     preferred-height: 460px;
     min-width: 520px;
     min-height: 360px;
+
+    MenuBar {
+        Menu {
+            title: "Hilfe";
+            // agent-id: "help.about"
+            // `MenuItem` has no `agent-id` property; this marker keeps the
+            // agent-api coverage check (scripts/agent-api-check) in sync with
+            // crates/agent-api's "help.about" element.
+            MenuItem {
+                title: "Über";
+                activated => {
+                    root.show-about();
+                }
+            }
+        }
+    }
+
+    // agent-id: "about.dialog"
+    // `PopupWindow` has no `agent-id` property; this marker keeps the
+    // agent-api coverage check (scripts/agent-api-check) in sync with
+    // crates/agent-api's "about.dialog" element.
+    about-popup := PopupWindow {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.scrim;
+        }
+
+        AboutDialog {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            app-version: root.app-version;
+            close-requested => {
+                root.hide-about();
+            }
+        }
+    }
+
     Rectangle {
         x: 0;
         y: 0;
@@ -94,6 +152,10 @@ export component MainWindow inherits Window {
                 height: Theme.body_line_height;
             }
 
+            // agent-id: "main.status"
+            // Plain `Text` has no `agent-id` property; this marker keeps the
+            // agent-api coverage check (scripts/agent-api-check) in sync with
+            // crates/agent-api's "main.status" element.
             Text {
                 text: "Status: " + root.status;
                 color: Theme.text_secondary;

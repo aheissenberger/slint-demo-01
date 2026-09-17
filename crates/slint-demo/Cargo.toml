@@ -10,7 +10,12 @@ name = "slint-demo"
 path = "src/main.rs"
 
 [features]
-default = ["agent-api"]
+# agent-api is opt-in, not default, so a plain `cargo build`/`cargo build --release`
+# never bundles the local automation HTTP server into a production binary
+# (see SETUP-PROMPT.md section 25). Development and test workflows enable it
+# explicitly via `--features agent-api` (see scripts/run, scripts/doctor, and
+# .devcontainer/scripts/start-desktop.sh).
+default = []
 agent-api = ["dep:agent-api"]
 
 [dependencies]

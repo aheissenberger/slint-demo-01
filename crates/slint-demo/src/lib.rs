@@ -45,6 +45,7 @@ impl DesktopApp {
             }
         });
         let ui = MainWindow::new().unwrap();
+        ui.set_app_version(env!("CARGO_PKG_VERSION").into());
         #[cfg(feature = "agent-api")]
         let weak = ui.as_weak();
         #[cfg(feature = "agent-api")]
@@ -71,6 +72,18 @@ impl DesktopApp {
                 let _ = agent_api.execute_ui_action(agent_api::AgentActionRequest {
                     action: "click".to_string(),
                     id: "main.reset".to_string(),
+                    value: None,
+                });
+            }
+        });
+
+        #[cfg(feature = "agent-api")]
+        ui.on_about_visibility_changed({
+            let agent_api = Arc::clone(&agent_api);
+            move |open| {
+                let _ = agent_api.execute_ui_action(agent_api::AgentActionRequest {
+                    action: "click".to_string(),
+                    id: if open { "help.about" } else { "about.close" }.to_string(),
                     value: None,
                 });
             }
@@ -109,6 +122,17 @@ impl DesktopApp {
                     {
                         if ui.get_input_value().as_str() != input {
                             ui.set_input_value(input.into());
+                        }
+                    }
+                    let about_open = inspection
+                        .elements
+                        .iter()
+                        .any(|element| element.id == "about.dialog");
+                    if ui.get_about_visible() != about_open {
+                        if about_open {
+                            ui.invoke_show_about();
+                        } else {
+                            ui.invoke_hide_about();
                         }
                     }
                 }

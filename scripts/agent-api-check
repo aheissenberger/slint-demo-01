@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Cross-check agent-id coverage between the Slint UI and crates/agent-api.
+
+Every element a human can interact with in the rendered UI must have a
+matching entry in the agent-api semantic contract (inspect_ui/execute_ui_action),
+and every id the agent-api exposes or accepts must trace back to a real,
+still-existing UI element. This script fails (non-zero exit) when either side
+drifts from the other, per the "Agent API parity (mandatory)" rule in
+AGENTS.md.
+
+Two kinds of UI declarations are recognized:
+  - `agent-id: "screen.element";`   — the custom property carried by reusable
+    components (FluentButton, FluentTextField, ...).
+  - `// agent-id: "screen.element"` — a comment marker placed directly above
+    a built-in element (MenuItem, Text, PopupWindow, ...) that cannot carry a
+    custom property of its own.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+UI_DIR = REPO_ROOT / "ui"
+AGENT_API_DIR = REPO_ROOT / "crates" / "agent-api" / "src"
+
+SLINT_AGENT_ID_RE = re.compile(r'agent-id:\s*"([^"]+)"')
+SLINT_AGENT_ID_COMMENT_RE = re.compile(r'//\s*agent-id:\s*"([^"]+)"')
+RUST_ELEMENT_ID_RE = re.compile(r'\bid:\s*"([^"]+)"\.to_string\(\)')
+RUST_ACTION_ID_RE = re.compile(r'action\.id\s*==\s*"([^"]+)"')
+
+
+def find_ids(pattern: re.Pattern, path: Path) -> dict[str, list[tuple[Path, int]]]:
+    found: dict[str, list[tuple[Path, int]]] = {}
+    for line_no, line in enumerate(path.read_text().splitlines(), start=1):
+        for match in pattern.finditer(line):
+            found.setdefault(match.group(1), []).append((path, line_no))
+    return found
+
+
+def merge(*dicts: dict[str, list[tuple[Path, int]]]) -> dict[str, list[tuple[Path, int]]]:
+    merged: dict[str, list[tuple[Path, int]]] = {}
+    for d in dicts:
+        for key, locations in d.items():
+            merged.setdefault(key, []).extend(locations)
+    return merged
+
+
+def relative(path: Path) -> str:
+    return str(path.relative_to(REPO_ROOT))
+
+
+def format_locations(locations: list[tuple[Path, int]]) -> str:
+    return ", ".join(f"{relative(path)}:{line}" for path, line in locations)
+
+
+def main() -> int:
+    slint_files = sorted(UI_DIR.rglob("*.slint"))
+    rust_files = sorted(AGENT_API_DIR.rglob("*.rs"))
+
+    if not slint_files:
+        print(f"error: no .slint files found under {UI_DIR}", file=sys.stderr)
+        return 2
+    if not rust_files:
+        print(f"error: no .rs files found under {AGENT_API_DIR}", file=sys.stderr)
+        return 2
+
+    ui_ids = merge(
+        *(find_ids(SLINT_AGENT_ID_RE, f) for f in slint_files),
+        *(find_ids(SLINT_AGENT_ID_COMMENT_RE, f) for f in slint_files),
+    )
+    element_ids = merge(*(find_ids(RUST_ELEMENT_ID_RE, f) for f in rust_files))
+    action_ids = merge(*(find_ids(RUST_ACTION_ID_RE, f) for f in rust_files))
+    agent_api_ids = merge(element_ids, action_ids)
+
+    errors: list[str] = []
+
+    for agent_id, locations in sorted(ui_ids.items()):
+        if agent_id not in element_ids:
+            errors.append(
+                f'"{agent_id}" is declared in the UI ({format_locations(locations)}) '
+                "but is not exposed by inspect_ui() in crates/agent-api/src/lib.rs"
+            )
+
+    for agent_id, locations in sorted(agent_api_ids.items()):
+        if agent_id not in ui_ids:
+            errors.append(
+                f'"{agent_id}" is referenced in agent-api ({format_locations(locations)}) '
+                "but no matching `agent-id` (property or `// agent-id:` marker) exists "
+                "under ui/ — remove the dead entry or add the UI marker"
+            )
+
+    if errors:
+        print("agent-api coverage check failed:\n", file=sys.stderr)
+        for error in errors:
+            print(f"  - {error}", file=sys.stderr)
+        print(
+            f"\n{len(ui_ids)} UI agent-id(s), {len(element_ids)} inspect_ui element(s), "
+            f"{len(action_ids)} action handler(s) matched by id.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"agent-api coverage check passed: {len(ui_ids)} UI agent-id(s) all have "
+        f"matching inspect_ui elements ({len(element_ids)} total), "
+        f"{len(action_ids)} action handler(s) all trace to a real UI element."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

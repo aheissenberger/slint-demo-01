@@ -36,6 +36,8 @@ export global Theme {
     out property <color> error: #d13438;
 
     out property <color> shadow: rgba(0, 0, 0, 0.12);
+    // Modal backdrop behind an elevated dialog surface (Fluent 2 smoke layer).
+    out property <color> scrim: rgba(0, 0, 0, 0.4);
     // Matches Fluent 2 ControlCornerRadius (buttons, text fields).
     out property <length> radius_1: 4px;
     // Matches Fluent 2 OverlayCornerRadius (cards, dialogs, flyouts).
@@ -49,6 +51,9 @@ export global Theme {
     out property <length> page_gutter: 32px;
     out property <length> form_content_width: 440px;
     out property <length> button_min_width: 96px;
+    // Caps the width of the `AboutSlint` "Made with Slint" badge so its
+    // logo image does not scale up to fill the whole About dialog width.
+    out property <length> about_logo_max_width: 192px;
     out property <float> disabled_opacity: 0.5;
     out property <length> border_width: 1px;
     out property <length> border_width_none: 0px;

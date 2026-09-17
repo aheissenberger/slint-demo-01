@@ -1,0 +1,85 @@
+import { Theme } from "../theme/theme.slint";
+import { FluentButton } from "../components/fluent-button.slint";
+import { AboutSlint } from "std-widgets.slint";
+
+// German "About" dialog surface. Fulfils the Slint Royalty-free License
+// requirement to disclose the use of Slint from the application's top-level
+// menu by embedding the `AboutSlint` widget alongside the app's own notice.
+export component AboutDialog inherits Rectangle {
+    in property <string> app-version: "0.1.0";
+    callback close-requested();
+
+    width: Theme.form_content_width + Theme.space_6 * 2;
+    height: self.preferred-height;
+    border-radius: Theme.radius_2;
+    border-width: Theme.border_width;
+    border-color: Theme.border;
+    background: Theme.panel;
+    accessible-role: text;
+
+    VerticalLayout {
+        padding: Theme.space_6;
+        spacing: Theme.space_3;
+        alignment: start;
+
+        Text {
+            text: "Über Slint Agent Desktop";
+            color: Theme.text_primary;
+            font-size: Theme.title_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.title_weight;
+            height: Theme.title_line_height;
+        }
+
+        Text {
+            text: "Version " + root.app-version + " · entwickelt mit Rust und Slint.";
+            color: Theme.text_secondary;
+            font-size: Theme.body_size;
+            font-family: Theme.font_family;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: "© 2025 Copilot. Veröffentlicht unter der MIT-Lizenz.";
+            color: Theme.text_secondary;
+            font-size: Theme.caption_size;
+            font-family: Theme.font_family;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            height: Theme.border_width;
+            background: Theme.border;
+        }
+
+        Text {
+            text: "Diese Anwendung verwendet das UI-Toolkit Slint (https://slint.dev), lizenziert unter der Slint Royalty-free License.";
+            color: Theme.text_secondary;
+            font-size: Theme.caption_size;
+            font-family: Theme.font_family;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+
+            AboutSlint {
+                width: Theme.about_logo_max_width;
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            height: Theme.control_height;
+
+            FluentButton {
+                label: "Schließen";
+                primary: true;
+                agent-id: "about.close";
+                clicked => {
+                    root.close-requested();
+                }
+            }
+        }
+    }
+}

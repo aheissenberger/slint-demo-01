@@ -3,7 +3,12 @@ set -euxo pipefail
 
 actionlint .github/workflows/*.yml
 cargo fmt --all -- --check
+# Production posture check: agent-api is not a default feature, so this
+# workspace check compiles slint-demo exactly as a plain `cargo build --release`
+# would (no automation HTTP server bundled in).
 cargo check --workspace --all-targets
+# Dev/test posture check: lints the full feature set, including agent-api.
 cargo clippy --all-targets --all-features -- -D warnings
-cargo check -p slint-demo --no-default-features
+cargo check -p slint-demo --features agent-api
 ./scripts/slint-check
+./scripts/agent-api-check

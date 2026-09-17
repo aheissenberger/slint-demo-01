@@ -69,6 +69,19 @@ binary without that listener. The current container is a Linux development
 runtime; Windows release builds should use native Windows CI runners.
 The Windows GitHub Actions workflow builds that binary on `windows-latest` and
 uploads `slint-demo.exe` as the `slint-demo-windows-x86_64` workflow artifact.
+It then packages the binary into an MSI installer using
+[cargo-wix](https://github.com/volks73/cargo-wix) and the WiX Toolset, and
+uploads it as the `slint-demo-windows-x86_64-installer` artifact. The
+installer places the app under Program Files, adds a Start Menu shortcut, and
+supports upgrade/uninstall via the standard Windows "Apps & Features" list; it
+targets Windows 10 and later. The WiX source lives in
+`crates/slint-demo/wix/main.wxs` (generated with `cargo wix init` and then
+hand-edited to add the Start Menu shortcut) and the MIT license text in
+`crates/slint-demo/wix/License.rtf` was generated from the workspace
+`license` field. Regenerate the license file with
+`cargo wix init --force -p slint-demo` if the license text changes; re-apply
+the Start Menu shortcut edit afterward since `init --force` overwrites
+`main.wxs`.
 Run it manually from the Actions tab, or let it run on pushes to `main` and
 pull requests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; update that file and the

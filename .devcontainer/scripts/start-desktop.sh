@@ -47,4 +47,4 @@ exec cargo watch \
   --watch Cargo.lock \
   --watch rust-toolchain.toml \
   --clear \
-  -x 'run -p slint-demo --bin slint-demo' > /tmp/desktop.log 2>&1
+  -x 'run -p slint-demo --bin slint-demo --features agent-api' > /tmp/desktop.log 2>&1
