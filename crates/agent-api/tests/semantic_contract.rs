@@ -343,6 +343,33 @@ fn settings_menu_exposes_and_changes_the_theme_mode() {
             .as_deref(),
         Some("true")
     );
+    assert!(opened
+        .elements
+        .iter()
+        .any(|element| element.id == "settings.data.summary"
+            && element
+                .value
+                .as_deref()
+                .is_some_and(|value| value.contains("aktive Notizen"))));
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "settings.data.backup".into(),
+        value: None,
+    })
+    .expect("create data backup");
+    let backup_state = api.get_state().expect("backup state");
+    assert_eq!(
+        backup_state.last_backup_path.as_deref(),
+        Some("memory://backup")
+    );
+
+    api.execute_command(AgentCommandRequest {
+        command: "reset_user_data".into(),
+        arguments: serde_json::json!({}),
+    })
+    .expect("reset user data");
+    assert!(api.get_state().expect("reset state").notes.is_empty());
 
     api.execute_ui_action(AgentActionRequest {
         action: "click".into(),

@@ -27,6 +27,8 @@ pub struct AgentStateResponse {
     pub selected_note_id: Option<String>,
     pub note_title: String,
     pub note_body: String,
+    pub data_summary: String,
+    pub last_backup_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,6 +259,34 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
         },
     ),
     (
+        "settings.data.summary",
+        UiComponentMetadata {
+            role: "status",
+            actions: &["get_value"],
+        },
+    ),
+    (
+        "settings.data.backup-path",
+        UiComponentMetadata {
+            role: "status",
+            actions: &["get_value"],
+        },
+    ),
+    (
+        "settings.data.backup",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
+        },
+    ),
+    (
+        "settings.data.reset",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
+        },
+    ),
+    (
         "about.dialog",
         UiComponentMetadata {
             role: "dialog",
@@ -355,7 +385,13 @@ pub struct AgentApi<S> {
 
 impl<S> AgentApi<S>
 where
-    S: application::AppRepository + application::NoteRepository + Clone + Send + Sync + 'static,
+    S: application::AppRepository
+        + application::NoteRepository
+        + application::DataMaintenanceRepository
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     pub fn new(service: AppService<S>) -> Self {
         Self::from_store(Arc::new(AppStateStore::new(service)))
@@ -388,6 +424,8 @@ where
             selected_note_id: state.selected_note_id,
             note_title: state.note_title,
             note_body: state.note_body,
+            data_summary: state.data_summary,
+            last_backup_path: state.last_backup_path,
         })
     }
 
@@ -437,6 +475,8 @@ where
             }
             "retry_last_task" => AppAction::RetryLastFailedTask,
             "dismiss_error" => AppAction::DismissError,
+            "create_data_backup" => AppAction::CreateDataBackup,
+            "reset_user_data" => AppAction::ResetUserData,
             "reset" => AppAction::Reset,
             "open_about" => AppAction::OpenAbout,
             "close_about" => AppAction::CloseAbout,
@@ -512,6 +552,8 @@ where
             "file.settings" => Ok(self.store.dispatch(AppAction::OpenSettings)?.message),
             "about.close" => Ok(self.store.dispatch(AppAction::CloseAbout)?.message),
             "settings.close" => Ok(self.store.dispatch(AppAction::CloseSettings)?.message),
+            "settings.data.backup" => Ok(self.store.dispatch(AppAction::CreateDataBackup)?.message),
+            "settings.data.reset" => Ok(self.store.dispatch(AppAction::ResetUserData)?.message),
             "settings.theme.system" => self.set_theme_mode(ThemeMode::System),
             "settings.theme.light" => self.set_theme_mode(ThemeMode::Light),
             "settings.theme.dark" => self.set_theme_mode(ThemeMode::Dark),
@@ -564,6 +606,8 @@ where
                 .map(error_value)
                 .ok_or_else(|| ApplicationError::InvalidPayload("kein Fehler sichtbar".into())),
             "main.tasks" => Ok(task_summary(&state)),
+            "settings.data.summary" => Ok(state.data_summary),
+            "settings.data.backup-path" => Ok(state.last_backup_path.unwrap_or_default()),
             "notes.list" => Ok(state.notes.len().to_string()),
             "notes.title" => Ok(state.note_title),
             "notes.body" => Ok(state.note_body),
@@ -662,6 +706,8 @@ where
                 | "settings.theme.system"
                 | "settings.theme.light"
                 | "settings.theme.dark"
+                | "settings.data.backup"
+                | "settings.data.reset"
         ) && !state.is_settings_open()
         {
             return Err(ApplicationError::InvalidPayload(format!(
@@ -692,6 +738,8 @@ where
             | "help.about"
             | "about.close"
             | "settings.close"
+            | "settings.data.backup"
+            | "settings.data.reset"
             | "settings.theme.system"
             | "settings.theme.light"
             | "settings.theme.dark" => true,
@@ -919,6 +967,25 @@ fn settings_elements(state: &application::AppState) -> Vec<AgentElement> {
             Some((state.theme_mode == ThemeMode::Dark).to_string()),
             "Dunkel",
         ),
+        element(
+            "settings.data.summary",
+            true,
+            Some(state.data_summary.clone()),
+            "Datenstatus",
+        ),
+        element(
+            "settings.data.backup-path",
+            true,
+            Some(state.last_backup_path.clone().unwrap_or_default()),
+            "Letzte Datensicherung",
+        ),
+        element("settings.data.backup", true, None, "Daten sichern"),
+        element(
+            "settings.data.reset",
+            true,
+            None,
+            "Lokale Daten zurücksetzen",
+        ),
         element("settings.close", true, None, "Schließen"),
     ]
 }
@@ -970,7 +1037,13 @@ fn task_summary(state: &application::AppState) -> String {
 
 impl<S> AgentService for AgentApi<S>
 where
-    S: application::AppRepository + application::NoteRepository + Clone + Send + Sync + 'static,
+    S: application::AppRepository
+        + application::NoteRepository
+        + application::DataMaintenanceRepository
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
         AgentApi::get_state(self)

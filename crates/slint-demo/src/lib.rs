@@ -28,6 +28,8 @@ fn apply_state(ui: &MainWindow, state: AppState) {
     apply_error_state(ui, &state);
     apply_validation_state(ui, &state);
     apply_task_state(ui, &state);
+    ui.set_data_summary(state.data_summary.clone().into());
+    ui.set_last_backup_path(state.last_backup_path.clone().unwrap_or_default().into());
     ui.set_note_save_enabled(state.can_save_note());
     ui.set_note_selected(state.selected_note_id.is_some());
     ui.set_notes_count(state.notes.len().try_into().unwrap_or(i32::MAX));
@@ -211,6 +213,7 @@ impl DesktopApp {
         Self::configure_about(ui, &store);
         Self::configure_settings(ui, &store);
         Self::configure_theme_mode(ui, &store);
+        Self::configure_data_maintenance(ui, &store);
         Self::configure_notes(ui, &store);
         Self::configure_submit(ui, &store);
         Self::configure_cancel(ui, &store);
@@ -322,6 +325,25 @@ impl DesktopApp {
             };
             if let Err(error) = store.dispatch(AppAction::SetThemeMode { mode }) {
                 tracing::error!(%error, "failed to synchronize theme mode");
+            }
+        });
+    }
+
+    fn configure_data_maintenance(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
+    ) {
+        let backup_store = Arc::clone(store);
+        ui.on_create_data_backup(move || {
+            if let Err(error) = backup_store.dispatch(AppAction::CreateDataBackup) {
+                tracing::error!(%error, "Datensicherung konnte nicht erstellt werden");
+            }
+        });
+
+        let reset_store = Arc::clone(store);
+        ui.on_reset_user_data(move || {
+            if let Err(error) = reset_store.dispatch(AppAction::ResetUserData) {
+                tracing::error!(%error, "Lokale Daten konnten nicht zurückgesetzt werden");
             }
         });
     }

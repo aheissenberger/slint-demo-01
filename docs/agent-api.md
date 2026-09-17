@@ -49,6 +49,13 @@ with `settings.theme.system`, `settings.theme.light`, or
 is available as the `set_theme` command with a `mode` argument of `system`,
 `light`, or `dark`.
 
+The settings surface also exposes data maintenance. `settings.data.summary`
+reports the storage location and object counts, `settings.data.backup`
+creates a timestamped SQLite backup, `settings.data.backup-path` exposes the
+last backup path, and `settings.data.reset` clears local notes/submissions and
+restores default settings. The same operations are available as
+`create_data_backup` and `reset_user_data` commands.
+
 The notes AppShell is reachable without opening a dialog. Use
 `scripts/agent set notes.title "Titel"` and
 `scripts/agent set notes.body "Inhalt"` followed by
@@ -67,6 +74,7 @@ contract. `app_state` includes:
   `notes.title`.
 - `tasks`, `active_task_id`, and `can_retry` for concurrent long-running
   operations.
+- `data_summary` and `last_backup_path` for data maintenance and recovery.
 
 Recoverable errors appear as `main.error` with `main.retry` and
 `main.error.dismiss`. Critical recovery-required errors appear as
@@ -204,7 +212,9 @@ reused.
   "notes": [],
   "selected_note_id": null,
   "note_title": "",
-  "note_body": ""
+  "note_body": "",
+  "data_summary": "memory · 0 aktive Notizen · 0 archivierte Notizen · 0 Übermittlungen",
+  "last_backup_path": null
 }
 ```
 

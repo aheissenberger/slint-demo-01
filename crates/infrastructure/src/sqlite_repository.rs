@@ -1,4 +1,7 @@
-use application::{AppRepository, ApplicationError, NoteRepository};
+use application::{
+    AppRepository, ApplicationError, DataBackupInfo, DataMaintenanceRepository,
+    DataMaintenanceSummary, NoteRepository,
+};
 use chrono::{DateTime, Utc};
 use directories::ProjectDirs;
 use domain::{AppId, AppSettings, Note, NoteBody, NoteId, NoteTitle, SubmissionRecord};
@@ -14,6 +17,7 @@ const DATABASE_FILE_NAME: &str = "app-data.sqlite3";
 #[derive(Debug, Clone)]
 pub struct SqliteRepository {
     connection: Arc<Mutex<Connection>>,
+    path: Option<PathBuf>,
 }
 
 impl SqliteRepository {
@@ -40,6 +44,7 @@ impl SqliteRepository {
         debug!(path = %path.display(), "initialized SQLite repository");
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
+            path: Some(path),
         })
     }
 
@@ -57,6 +62,7 @@ impl SqliteRepository {
             })?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
+            path: None,
         })
     }
 
@@ -119,6 +125,25 @@ impl SqliteRepository {
 
     pub fn build_service(&self) -> application::AppService<Self> {
         application::AppService::new(self.clone())
+    }
+
+    fn backup_file(&self) -> Result<PathBuf, ApplicationError> {
+        let backup_dir = self.path.as_ref().map_or_else(
+            || std::env::temp_dir().join("slint-demo-backups"),
+            |path| {
+                path.parent()
+                    .map_or_else(|| PathBuf::from("backups"), |parent| parent.join("backups"))
+            },
+        );
+        std::fs::create_dir_all(&backup_dir).map_err(|error| {
+            ApplicationError::Repository(format!(
+                "Sicherungsverzeichnis konnte nicht angelegt werden: {error}"
+            ))
+        })?;
+        Ok(backup_dir.join(format!(
+            "app-data-{}.sqlite3",
+            Utc::now().timestamp_millis()
+        )))
     }
 }
 
@@ -272,6 +297,75 @@ impl NoteRepository for SqliteRepository {
     }
 }
 
+impl DataMaintenanceRepository for SqliteRepository {
+    fn maintenance_summary(&self) -> Result<DataMaintenanceSummary, ApplicationError> {
+        let connection = self.lock()?;
+        let active_notes = connection
+            .query_row("SELECT COUNT(*) FROM notes WHERE archived = 0", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(sqlite_error)?;
+        let archived_notes = connection
+            .query_row("SELECT COUNT(*) FROM notes WHERE archived = 1", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(sqlite_error)?;
+        let submissions = connection
+            .query_row("SELECT COUNT(*) FROM submissions", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(sqlite_error)?;
+        Ok(DataMaintenanceSummary {
+            location: self
+                .path
+                .as_ref()
+                .map_or_else(|| "memory".into(), |path| path.display().to_string()),
+            active_notes: count_to_usize(active_notes)?,
+            archived_notes: count_to_usize(archived_notes)?,
+            submissions: count_to_usize(submissions)?,
+        })
+    }
+
+    fn create_backup(&self) -> Result<DataBackupInfo, ApplicationError> {
+        let backup_file = self.backup_file()?;
+        let backup_path = backup_file.display().to_string();
+        self.lock()?
+            .execute("VACUUM INTO ?1", params![backup_path])
+            .map_err(sqlite_error)?;
+        Ok(DataBackupInfo {
+            path: backup_file.display().to_string(),
+        })
+    }
+
+    fn reset_user_data(&self) -> Result<(), ApplicationError> {
+        let mut connection = self.lock()?;
+        let transaction = connection.transaction().map_err(sqlite_error)?;
+        transaction
+            .execute("DELETE FROM submissions", [])
+            .map_err(sqlite_error)?;
+        transaction
+            .execute("DELETE FROM notes", [])
+            .map_err(sqlite_error)?;
+        let defaults = AppSettings::default();
+        transaction
+            .execute(
+                r#"
+                UPDATE app_settings
+                SET app_name = ?1, server_url = ?2, enabled = ?3, theme_mode = ?4
+                WHERE id = 1
+                "#,
+                params![
+                    defaults.app_name,
+                    defaults.server_url,
+                    bool_to_i64(defaults.enabled),
+                    defaults.theme_mode
+                ],
+            )
+            .map_err(sqlite_error)?;
+        transaction.commit().map_err(sqlite_error)
+    }
+}
+
 fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
     let id: String = row.get(0)?;
     let title: String = row.get(1)?;
@@ -326,6 +420,12 @@ fn bool_to_i64(value: bool) -> i64 {
     } else {
         0
     }
+}
+
+fn count_to_usize(value: i64) -> Result<usize, ApplicationError> {
+    value
+        .try_into()
+        .map_err(|_| ApplicationError::Repository("Datenzähler ist ungültig".into()))
 }
 
 /// Initializes the default persistent repository using SQLite and applies all
@@ -425,5 +525,40 @@ mod tests {
                 .unwrap(),
             rusqlite_migration::SchemaVersion::Inside(std::num::NonZeroUsize::new(1).unwrap())
         );
+    }
+
+    #[test]
+    fn data_maintenance_summarizes_backs_up_and_resets_user_data() {
+        let dir = TempDir::new().unwrap();
+        let repo = SqliteRepository::open(data_file(&dir)).unwrap();
+        let created_at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).single().unwrap();
+        repo.create_note(Note::new(
+            NoteId::new("note-1").unwrap(),
+            NoteTitle::new("Titel").unwrap(),
+            NoteBody::new("Inhalt").unwrap(),
+            created_at,
+        ))
+        .unwrap();
+        repo.save_submission(SubmissionRecord {
+            id: AppId::new("submission-1").unwrap(),
+            title: "submit".into(),
+            description: "Wert".into(),
+            created_at,
+            active: true,
+        })
+        .unwrap();
+
+        let summary = repo.maintenance_summary().unwrap();
+        assert_eq!(summary.active_notes, 1);
+        assert_eq!(summary.submissions, 1);
+        let backup = repo.create_backup().unwrap();
+        assert!(std::path::Path::new(&backup.path).exists());
+
+        repo.reset_user_data().unwrap();
+        let reset = repo.maintenance_summary().unwrap();
+        assert_eq!(reset.active_notes, 0);
+        assert_eq!(reset.submissions, 0);
+        assert!(repo.list_notes().unwrap().is_empty());
+        assert!(repo.list_submissions().unwrap().is_empty());
     }
 }

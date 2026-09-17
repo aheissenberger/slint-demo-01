@@ -27,6 +27,9 @@ The repository follows a layered Rust architecture that isolates the business lo
   adapter for tests; `SqliteRepository::in_memory()` offers the migrated SQLite
   behavior behind the production adapter's type for callers that need a
   drop-in, disk-free instance.
+- `application::DataMaintenanceRepository` exposes production data operations:
+  a user-readable storage summary, SQLite backups through `VACUUM INTO`, and a
+  reset flow that clears notes/submissions and restores default settings.
 
 Both adapters implement `application::AppRepository` (settings and
 submissions) and `application::NoteRepository` (the `Note` entity/use
@@ -66,6 +69,16 @@ the active task, `Retry` restarts the last retryable failed submission, and
 shutdown requests cancellation for the active operation before the window is
 hidden. Adapter work checks the cancellation token cooperatively at application
 boundaries before expensive or persistent operations are started.
+
+## Data maintenance
+
+The settings surface includes a `Daten` section for operational recovery
+without log inspection. It shows the current data location and object counts,
+can create a timestamped SQLite backup below a `backups/` directory next to
+the database, and can reset local user data through the same application
+state pipeline used by the Slint UI and agent API. In-memory test repositories
+implement the same contract so semantic tests can verify the flow without
+touching production user data.
 
 ## Settings persistence
 

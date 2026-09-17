@@ -326,6 +326,41 @@ msgctxt "MainWindow"
 msgid "Validierung der Haupteingabe"
 msgstr ""
 
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Daten"
+msgstr ""
+
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Datenstatus wird geladen"
+msgstr ""
+
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Datenstatus"
+msgstr ""
+
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Noch keine Datensicherung erstellt"
+msgstr ""
+
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Letzte Datensicherung"
+msgstr ""
+
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Daten sichern"
+msgstr ""
+
+#: ui/screens/settings-dialog.slint
+msgctxt "SettingsDialog"
+msgid "Lokale Daten zurücksetzen"
+msgstr ""
+
 #: ui/screens/settings-dialog.slint:80
 msgctxt "SettingsDialog"
 msgid "Systemeinstellung verwenden"

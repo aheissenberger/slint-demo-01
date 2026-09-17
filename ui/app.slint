@@ -20,6 +20,8 @@ export component MainWindow inherits Window {
     in property <string> note-title-validation-message: "";
     in property <string> note-body-validation-message: "";
     in property <string> task-summary: "";
+    in property <string> data-summary: "";
+    in property <string> last-backup-path: "";
     in property <bool> note-save-enabled: false;
     in property <bool> note-selected: false;
     in property <int> notes-count: 0;
@@ -54,6 +56,8 @@ export component MainWindow inherits Window {
     callback cancel();
     callback retry-last-task();
     callback dismiss-error();
+    callback create-data-backup();
+    callback reset-user-data();
     callback new-note();
     callback save-note();
     callback archive-note();
@@ -275,8 +279,16 @@ export component MainWindow inherits Window {
             x: (root.width - self.width) / 2;
             y: (root.height - self.height) / 2;
             theme-mode <=> root.theme-mode;
+            data-summary: root.data-summary;
+            last-backup-path: root.last-backup-path;
             theme-mode-changed(mode) => {
                 root.theme-mode-changed(mode);
+            }
+            create-data-backup => {
+                root.create-data-backup();
+            }
+            reset-user-data => {
+                root.reset-user-data();
             }
             close-requested => {
                 root.settings-visibility-changed(false);

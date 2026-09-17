@@ -224,6 +224,8 @@ pub struct AppState {
     pub active_task_id: Option<String>,
     pub last_failed_task_id: Option<String>,
     pub last_submission_input: Option<String>,
+    pub data_summary: String,
+    pub last_backup_path: Option<String>,
 }
 
 impl AppState {
@@ -248,6 +250,8 @@ impl AppState {
             active_task_id: None,
             last_failed_task_id: None,
             last_submission_input: None,
+            data_summary: String::new(),
+            last_backup_path: None,
         }
     }
 
@@ -367,9 +371,11 @@ impl AppState {
             | AppAction::SetNoteBody { .. } => self.apply_note_edit_action(action),
             AppAction::DismissError => Ok(self.dismiss_error()),
             AppAction::RetryLastFailedTask => Ok("Wiederholung wird vorbereitet".to_string()),
-            AppAction::SaveNote | AppAction::ArchiveNote | AppAction::DeleteNote => {
-                Ok("Notizen aktualisiert".to_string())
-            }
+            AppAction::SaveNote
+            | AppAction::ArchiveNote
+            | AppAction::DeleteNote
+            | AppAction::CreateDataBackup
+            | AppAction::ResetUserData => Ok("Notizen aktualisiert".to_string()),
         }
     }
 
@@ -385,6 +391,7 @@ impl AppState {
         self.active_task_id = None;
         self.last_failed_task_id = None;
         self.last_submission_input = None;
+        self.last_backup_path = None;
         self.active_dialog = None;
         "zurückgesetzt".to_string()
     }
@@ -727,6 +734,8 @@ pub enum AppAction {
     SaveNote,
     ArchiveNote,
     DeleteNote,
+    CreateDataBackup,
+    ResetUserData,
     RetryLastFailedTask,
     DismissError,
 }

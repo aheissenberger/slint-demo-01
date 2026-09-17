@@ -11,7 +11,8 @@ pub use reducer::{
     ThemeMode, UiError,
 };
 pub use use_cases::{
-    AppRepository, AppService, Clock, IdGenerator, SubmissionPayload, SystemClock, UuidV7Generator,
+    AppRepository, AppService, Clock, DataBackupInfo, DataMaintenanceRepository,
+    DataMaintenanceSummary, IdGenerator, SubmissionPayload, SystemClock, UuidV7Generator,
 };
 
 use std::collections::HashMap;
@@ -47,7 +48,7 @@ struct StatePublisher {
 
 impl<R> AppStateStore<R>
 where
-    R: AppRepository + NoteRepository + Clone + Send + 'static,
+    R: AppRepository + NoteRepository + DataMaintenanceRepository + Clone + Send + 'static,
 {
     pub fn new(service: AppService<R>) -> Self {
         let mut initial_state = AppState::new();
@@ -71,6 +72,16 @@ where
             Ok(notes) => initial_state.replace_notes(notes.into_iter().map(Into::into).collect()),
             Err(error) => {
                 tracing::warn!(%error, "gespeicherte Notizen konnten nicht geladen werden");
+                initial_state.ui_error = Some(UiError::from_application_error(&error));
+                if error.severity() == ErrorSeverity::Critical {
+                    initial_state.active_dialog = Some(ActiveDialog::CriticalError);
+                }
+            }
+        }
+        match service.maintenance_summary() {
+            Ok(summary) => initial_state.data_summary = summary.label(),
+            Err(error) => {
+                tracing::warn!(%error, "Datenstatus konnte nicht geladen werden");
                 initial_state.ui_error = Some(UiError::from_application_error(&error));
                 if error.severity() == ErrorSeverity::Critical {
                     initial_state.active_dialog = Some(ActiveDialog::CriticalError);
@@ -104,6 +115,12 @@ where
         }
         if matches!(action, AppAction::RetryLastFailedTask) {
             return self.retry_last_failed_submission();
+        }
+        if matches!(
+            action,
+            AppAction::CreateDataBackup | AppAction::ResetUserData
+        ) {
+            return self.reduce_data_maintenance_action(action);
         }
         self.reduce(action)
     }
@@ -245,6 +262,68 @@ where
         let (_, state) = self.publisher.update(None, |state| {
             state.replace_notes(notes);
             state.error_message = None;
+            Ok(message.clone())
+        })?;
+        Ok(CommandResult { message, state })
+    }
+
+    fn reduce_data_maintenance_action(
+        &self,
+        action: AppAction,
+    ) -> Result<CommandResult, ApplicationError> {
+        let result = self.persist_data_maintenance_action(action);
+        if let Err(error) = &result {
+            self.publisher.publish_event(AppEvent::ActionFailed {
+                error: UiError::from_application_error(error),
+            })?;
+        }
+        result
+    }
+
+    fn persist_data_maintenance_action(
+        &self,
+        action: AppAction,
+    ) -> Result<CommandResult, ApplicationError> {
+        let message = match action {
+            AppAction::CreateDataBackup => {
+                let backup = self.service.create_backup()?;
+                format!("Datensicherung erstellt: {}", backup.path)
+            }
+            AppAction::ResetUserData => {
+                self.service.reset_user_data()?;
+                "Lokale Daten zurückgesetzt".to_string()
+            }
+            _ => unreachable!("only data maintenance actions are handled here"),
+        };
+        let notes: Vec<NoteListItem> = self
+            .note_service
+            .list_active_notes()?
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let summary = self.service.maintenance_summary()?;
+        let (_, state) = self.publisher.update(None, |state| {
+            state.replace_notes(notes);
+            state.data_summary = summary.label();
+            if matches!(action, AppAction::ResetUserData) {
+                state.selected_note_id = None;
+                state.note_title.clear();
+                state.note_body.clear();
+                state.input.clear();
+                state.selected_file.clear();
+                state.last_submission_input = None;
+                state.theme_mode = ThemeMode::System;
+            }
+            if let AppAction::CreateDataBackup = action {
+                state.last_backup_path = Some(
+                    message
+                        .strip_prefix("Datensicherung erstellt: ")
+                        .unwrap_or("")
+                        .to_string(),
+                );
+            }
+            state.error_message = None;
+            state.ui_error = None;
             Ok(message.clone())
         })?;
         Ok(CommandResult { message, state })
@@ -556,6 +635,43 @@ mod tests {
         }
     }
 
+    impl DataMaintenanceRepository for FakeRepository {
+        fn maintenance_summary(&self) -> Result<DataMaintenanceSummary, ApplicationError> {
+            let records = self
+                .records
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))?;
+            let notes = self
+                .notes
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Notizsperre beschädigt".into()))?;
+            Ok(DataMaintenanceSummary {
+                location: "memory".into(),
+                active_notes: notes.iter().filter(|note| !note.is_archived()).count(),
+                archived_notes: notes.iter().filter(|note| note.is_archived()).count(),
+                submissions: records.len(),
+            })
+        }
+
+        fn create_backup(&self) -> Result<DataBackupInfo, ApplicationError> {
+            Ok(DataBackupInfo {
+                path: "memory://backup".into(),
+            })
+        }
+
+        fn reset_user_data(&self) -> Result<(), ApplicationError> {
+            self.records
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))?
+                .clear();
+            self.notes
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Notizsperre beschädigt".into()))?
+                .clear();
+            Ok(())
+        }
+    }
+
     #[derive(Clone, Default)]
     struct BlockingRepository {
         gate: Arc<(Mutex<BlockingRepositoryState>, Condvar)>,
@@ -614,6 +730,32 @@ mod tests {
         }
 
         fn delete_note(&self, _id: &NoteId) -> Result<(), ApplicationError> {
+            Ok(())
+        }
+    }
+
+    impl DataMaintenanceRepository for BlockingRepository {
+        fn maintenance_summary(&self) -> Result<DataMaintenanceSummary, ApplicationError> {
+            Ok(DataMaintenanceSummary {
+                location: "blocking-memory".into(),
+                active_notes: 0,
+                archived_notes: 0,
+                submissions: self.list_submissions()?.len(),
+            })
+        }
+
+        fn create_backup(&self) -> Result<DataBackupInfo, ApplicationError> {
+            Ok(DataBackupInfo {
+                path: "memory://blocking-backup".into(),
+            })
+        }
+
+        fn reset_user_data(&self) -> Result<(), ApplicationError> {
+            let (lock, _) = &*self.gate;
+            lock.lock()
+                .map_err(|_| ApplicationError::Repository("Testsperre beschädigt".into()))?
+                .records
+                .clear();
             Ok(())
         }
     }
@@ -996,6 +1138,45 @@ mod tests {
     }
 
     #[test]
+    fn data_backup_updates_state_with_backup_path_and_summary() {
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
+
+        let result = store.dispatch(AppAction::CreateDataBackup).unwrap();
+
+        assert_eq!(
+            result.state.last_backup_path.as_deref(),
+            Some("memory://backup")
+        );
+        assert!(result.state.data_summary.contains("aktive Notizen"));
+        assert!(result.message.contains("Datensicherung erstellt"));
+    }
+
+    #[test]
+    fn reset_user_data_clears_persisted_records_and_drafts() {
+        let repository = FakeRepository::default();
+        let store = AppStateStore::new(test_service(repository.clone()));
+        store
+            .dispatch(AppAction::SetInput {
+                value: "Wert".into(),
+            })
+            .unwrap();
+        store
+            .dispatch(AppAction::SetNoteTitle {
+                value: "Notiz".into(),
+            })
+            .unwrap();
+        store.dispatch(AppAction::SaveNote).unwrap();
+
+        let result = store.dispatch(AppAction::ResetUserData).unwrap();
+
+        assert!(repository.list_notes().unwrap().is_empty());
+        assert!(result.state.notes.is_empty());
+        assert!(result.state.input.is_empty());
+        assert!(result.state.note_title.is_empty());
+        assert!(result.state.last_submission_input.is_none());
+    }
+
+    #[test]
     fn focusing_a_control_publishes_a_transient_effect_without_mutating_state() {
         let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
@@ -1007,7 +1188,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.message, "main.input fokussiert");
-        assert_eq!(result.state, AppState::new());
+        assert_eq!(result.state, store.current_state().unwrap());
         assert_eq!(
             updates.recv().unwrap().effect,
             Some(AppEffect::Focus {

@@ -4,7 +4,11 @@ import { Theme } from "../theme/theme.slint";
 
 export component SettingsDialog inherits Rectangle {
     in-out property <string> theme-mode: "system";
+    in property <string> data-summary: "";
+    in property <string> last-backup-path: "";
     callback theme-mode-changed(string);
+    callback create-data-backup();
+    callback reset-user-data();
     callback close-requested();
 
     function select-theme-mode(mode: string) {
@@ -109,6 +113,71 @@ export component SettingsDialog inherits Rectangle {
                     selected => {
                         root.select-theme-mode("dark");
                     }
+                }
+            }
+        }
+
+        Text {
+            text: @tr("Daten");
+            color: Theme.text_primary;
+            font-size: Theme.subtitle_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.strong_weight;
+            height: Theme.subtitle_line_height;
+        }
+
+        // agent-id: "settings.data.summary"
+        // agent-role: "status"
+        // agent-actions: "get_value"
+        Text {
+            width: parent.width;
+            text: root.data-summary == "" ? @tr("Datenstatus wird geladen") : root.data-summary;
+            color: Theme.text_secondary;
+            font-size: Theme.body_size;
+            font-family: Theme.font_family;
+            height: Theme.body_line_height * 2;
+            wrap: word-wrap;
+            accessible-label: @tr("Datenstatus");
+        }
+
+        // agent-id: "settings.data.backup-path"
+        // agent-role: "status"
+        // agent-actions: "get_value"
+        Text {
+            width: parent.width;
+            text: root.last-backup-path == "" ? @tr("Noch keine Datensicherung erstellt") : root.last-backup-path;
+            color: Theme.text_secondary;
+            font-size: Theme.caption_size;
+            font-family: Theme.font_family;
+            height: Theme.caption_line_height * 2;
+            wrap: word-wrap;
+            accessible-label: @tr("Letzte Datensicherung");
+        }
+
+        HorizontalLayout {
+            width: parent.width;
+            spacing: Theme.space_3;
+            alignment: end;
+            height: Theme.control_height;
+
+            FluentButton {
+                label: @tr("Daten sichern");
+                agent-id: "settings.data.backup";
+                agent-role: "button";
+                agent-actions: "click";
+                clicked => {
+                    root.create-data-backup();
+                }
+            }
+
+            FluentButton {
+                label: @tr("Lokale Daten zurücksetzen");
+                destructive: true;
+                agent-id: "settings.data.reset";
+                agent-role: "button";
+                agent-actions: "click";
+                clicked => {
+                    root.reset-user-data();
                 }
             }
         }

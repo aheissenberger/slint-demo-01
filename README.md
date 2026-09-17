@@ -40,7 +40,8 @@ database under the platform data directory. The HTTP agent API is
 development-only and listens on loopback. Runtime errors are exposed with
 stable error codes, separate user/diagnostic text, inline validation, retry
 actions, and per-task progress so agent-driven checks can validate recovery
-flows without reading logs.
+flows without reading logs. The settings dialog includes data maintenance for
+storage summaries, SQLite backups, and resetting local user data.
 MCP-capable coding agents can use `scripts/mcp` as a stdio server after
 `scripts/run`; see `docs/agent-api.md` for its tools and resources.
 

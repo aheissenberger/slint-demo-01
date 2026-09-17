@@ -4,7 +4,10 @@ mod sqlite_repository;
 pub use file_repository::FileRepository;
 pub use sqlite_repository::SqliteRepository;
 
-use application::{AppRepository, AppService, ApplicationError, NoteRepository};
+use application::{
+    AppRepository, AppService, ApplicationError, DataBackupInfo, DataMaintenanceRepository,
+    DataMaintenanceSummary, NoteRepository,
+};
 use domain::{AppSettings, Note, NoteId, SubmissionRecord};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, instrument};
@@ -98,6 +101,42 @@ impl NoteRepository for MemoryRepository {
             .map_err(|_| ApplicationError::Repository("Repositorysperre beschädigt".into()))?
             .notes
             .retain(|note| note.id() != id);
+        Ok(())
+    }
+}
+
+impl DataMaintenanceRepository for MemoryRepository {
+    fn maintenance_summary(&self) -> Result<DataMaintenanceSummary, ApplicationError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Repositorysperre beschädigt".into()))?;
+        Ok(DataMaintenanceSummary {
+            location: "memory".into(),
+            active_notes: state
+                .notes
+                .iter()
+                .filter(|note| !note.is_archived())
+                .count(),
+            archived_notes: state.notes.iter().filter(|note| note.is_archived()).count(),
+            submissions: state.records.len(),
+        })
+    }
+
+    fn create_backup(&self) -> Result<DataBackupInfo, ApplicationError> {
+        Ok(DataBackupInfo {
+            path: "memory://backup".into(),
+        })
+    }
+
+    fn reset_user_data(&self) -> Result<(), ApplicationError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Repositorysperre beschädigt".into()))?;
+        state.settings = AppSettings::default();
+        state.records.clear();
+        state.notes.clear();
         Ok(())
     }
 }

@@ -13,6 +13,34 @@ pub trait AppRepository {
     fn list_submissions(&self) -> Result<Vec<SubmissionRecord>, ApplicationError>;
 }
 
+pub trait DataMaintenanceRepository {
+    fn maintenance_summary(&self) -> Result<DataMaintenanceSummary, ApplicationError>;
+    fn create_backup(&self) -> Result<DataBackupInfo, ApplicationError>;
+    fn reset_user_data(&self) -> Result<(), ApplicationError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataMaintenanceSummary {
+    pub location: String,
+    pub active_notes: usize,
+    pub archived_notes: usize,
+    pub submissions: usize,
+}
+
+impl DataMaintenanceSummary {
+    pub fn label(&self) -> String {
+        format!(
+            "{} · {} aktive Notizen · {} archivierte Notizen · {} Übermittlungen",
+            self.location, self.active_notes, self.archived_notes, self.submissions
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataBackupInfo {
+    pub path: String,
+}
+
 pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<Utc>;
 }
@@ -135,5 +163,22 @@ where
         let mut settings = self.repository.load_settings()?;
         settings.theme_mode = theme_mode.to_string();
         self.repository.save_settings(settings)
+    }
+}
+
+impl<R> AppService<R>
+where
+    R: DataMaintenanceRepository,
+{
+    pub fn maintenance_summary(&self) -> Result<DataMaintenanceSummary, ApplicationError> {
+        self.repository.maintenance_summary()
+    }
+
+    pub fn create_backup(&self) -> Result<DataBackupInfo, ApplicationError> {
+        self.repository.create_backup()
+    }
+
+    pub fn reset_user_data(&self) -> Result<(), ApplicationError> {
+        self.repository.reset_user_data()
     }
 }
