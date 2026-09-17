@@ -101,6 +101,17 @@ The post-create hook installs the pinned Rust components, fetches locked
 dependencies, and runs doctor, check, and unit/application tests. Runtime
 semantic checks remain explicit: run `./scripts/e2e` after `./scripts/run`.
 
+Beim Containerstart bereinigt
+`.devcontainer/scripts/cleanup-cargo-target.sh` das persistente Cargo-Target
+höchstens einmal innerhalb von 24 Stunden. Release-Artefakte werden entfernt,
+weil der Container ausschließlich Entwicklungs-Builds ausführt. Incremental-
+Sessions, die länger als `CARGO_TARGET_RETENTION_DAYS` nicht verändert wurden,
+werden ebenfalls entfernt. Überschreitet das gesamte Target
+`CARGO_TARGET_MAX_GIB`, wird der Inhalt des Build-Caches vollständig
+zurückgesetzt, ohne den Docker-Volume-Mountpoint selbst zu entfernen. Die
+Compose-Standardwerte sind 14 Tage und 40 GiB. Nach einer vollständigen
+Bereinigung dauert der nächste Build entsprechend länger.
+
 The Compose command starts the desktop through `./scripts/run --watch`. The
 runner uses `cargo watch` to rebuild whenever a watched source file changes
 (`crates/`, `ui/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`). It keeps

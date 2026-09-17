@@ -13,6 +13,8 @@ services:
       RUSTUP_HOME: /root/.rustup
       CARGO_HOME: /root/.cargo
       CARGO_TARGET_DIR: /workspace/target
+      CARGO_TARGET_RETENTION_DAYS: 14
+      CARGO_TARGET_MAX_GIB: 40
     volumes:
       - ..:/workspace:cached
       - cargo-downloads:/root/.cargo/downloads

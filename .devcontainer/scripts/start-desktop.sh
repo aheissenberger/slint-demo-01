@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+/workspace/.devcontainer/scripts/cleanup-cargo-target.sh
+
 export DISPLAY="${DISPLAY:-:1}"
 export SCREEN_GEOMETRY="${SCREEN_GEOMETRY:-1440x900x24}"
 mkdir -p "${XDG_RUNTIME_DIR:-/tmp/runtime-dir}"
