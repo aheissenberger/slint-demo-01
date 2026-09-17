@@ -10,5 +10,5 @@ fn main() {
         .json()
         .with_max_level(tracing::Level::INFO)
         .init();
-    desktop::DesktopApp::run();
+    slint_demo::DesktopApp::run();
 }

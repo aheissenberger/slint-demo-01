@@ -5,5 +5,5 @@ actionlint .github/workflows/*.yml
 cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo clippy --all-targets --all-features -- -D warnings
-cargo check -p desktop --no-default-features
+cargo check -p slint-demo --no-default-features
 ./scripts/slint-check

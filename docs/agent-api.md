@@ -28,7 +28,7 @@ duplicating state or command handling.
 
 The desktop binary binds the development-only HTTP transport to
 `127.0.0.1:8080` when built with the default `agent-api` feature. A production
-build can disable it with `cargo build -p desktop --no-default-features`; the
+build can disable it with `cargo build -p slint-demo --no-default-features`; the
 UI remains available without opening an automation listener. It is not enabled
 as a public service. Use
 `scripts/agent state` and `scripts/agent ui` to inspect before acting, then

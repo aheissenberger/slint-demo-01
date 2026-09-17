@@ -1,9 +1,13 @@
 [package]
-name = "desktop"
+name = "slint-demo"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+
+[[bin]]
+name = "slint-demo"
+path = "src/main.rs"
 
 [features]
 default = ["agent-api"]

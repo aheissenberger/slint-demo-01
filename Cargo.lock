@@ -956,22 +956,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "desktop"
-version = "0.1.0"
-dependencies = [
- "agent-api",
- "application",
- "domain",
- "infrastructure",
- "serde",
- "serde_json",
- "slint",
- "slint-build",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4101,6 +4085,22 @@ dependencies = [
  "i-slint-compiler",
  "spin_on",
  "toml_edit",
+]
+
+[[package]]
+name = "slint-demo"
+version = "0.1.0"
+dependencies = [
+ "agent-api",
+ "application",
+ "domain",
+ "infrastructure",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

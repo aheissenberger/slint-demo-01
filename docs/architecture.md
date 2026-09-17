@@ -6,7 +6,7 @@ The repository follows a layered Rust architecture that isolates the business lo
 - `domain`: value objects, entities, rules, validation, errors.
 - `application`: commands, queries, use cases, orchestration.
 - `infrastructure`: filesystem/network/persistence adapters.
-- `desktop`: Slint UI shell and callback translation.
+- `slint-demo`: Slint UI shell and callback translation.
 - `agent-api`: stable semantic operations for agent tooling and future MCP adoption.
 
 ## UI boundary

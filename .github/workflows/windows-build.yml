@@ -33,11 +33,11 @@ jobs:
           cache-all-crates: true
 
       - name: Build release executable
-        run: cargo build --locked --release -p desktop --no-default-features
+        run: cargo build --locked --release -p slint-demo --no-default-features
 
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
-          name: slint-agent-desktop-windows-x86_64
-          path: target/release/desktop.exe
+          name: slint-demo-windows-x86_64
+          path: target/release/slint-demo.exe
           if-no-files-found: error

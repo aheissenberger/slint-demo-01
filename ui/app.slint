@@ -60,9 +60,9 @@ export component MainWindow inherits Window {
     }
 
     Rectangle {
-        x: Theme.page_gutter;
+        x: (root.width - self.width) / 2;
         y: Theme.app_header_height + Theme.space_6;
-        width: root.width - Theme.page_gutter * 2;
+        width: Theme.form_content_width + Theme.space_6 * 2;
         height: root.height - Theme.app_header_height - Theme.space_6 * 2;
         border-radius: Theme.radius_2;
         border-width: Theme.border_width;

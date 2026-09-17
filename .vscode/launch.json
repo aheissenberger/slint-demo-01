@@ -5,7 +5,7 @@
       "name": "Run desktop app",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/target/debug/desktop",
+      "program": "${workspaceFolder}/target/debug/slint-demo",
       "args": [],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

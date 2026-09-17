@@ -3,7 +3,7 @@ members = [
   "crates/domain",
   "crates/application",
   "crates/infrastructure",
-  "crates/desktop",
+  "crates/slint-demo",
   "crates/agent-api",
 ]
 resolver = "2"

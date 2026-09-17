@@ -22,7 +22,7 @@ This repository is designed for agentic software development inside a Linux DevC
 - `crates/domain` contains pure business rules and value objects.
 - `crates/application` contains commands, queries, and orchestration.
 - `crates/infrastructure` contains adapters (filesystem, network, OS).
-- `crates/desktop` contains Slint binding and lifecycle logic.
+- `crates/slint-demo` contains Slint binding and lifecycle logic.
 - `crates/agent-api` contains agent-facing HTTP/JSON-RPC semantics.
 - `ui/` contains Slint presentation files and visual theme assets.
 

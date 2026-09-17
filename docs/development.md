@@ -58,13 +58,18 @@ the updated x11vnc/websockify configuration is used, then reload
 `http://localhost:6080/vnc.html`. The backend must expose an `RFB 003.008`
 greeting on port 5900.
 
+If noVNC connects but shows only a black screen, recreate or restart the
+DevContainer so its long-running launcher picks up the current
+`slint-demo` command. A stale launcher from an earlier crate name can keep
+retrying a nonexistent binary while Xvfb and VNC remain healthy.
+
 The default desktop feature starts the loopback-only development agent API.
-Use `cargo build -p desktop --no-default-features` for a production-shaped
+Use `cargo build -p slint-demo --no-default-features` for a production-shaped
 binary without that listener. The current container is a Linux development
 runtime; Windows release builds should use native Windows CI runners.
 The Windows GitHub Actions workflow builds that binary on `windows-latest` and
-uploads `desktop.exe` as the `slint-agent-desktop-windows-x86_64` workflow
-artifact. Run it manually from the Actions tab, or let it run on pushes to
-`main` and pull requests.
+uploads `slint-demo.exe` as the `slint-demo-windows-x86_64` workflow artifact.
+Run it manually from the Actions tab, or let it run on pushes to `main` and
+pull requests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; update that file and the
 matching DevContainer installation command together when upgrading Rust.

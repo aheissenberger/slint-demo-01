@@ -12,4 +12,4 @@ if curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1; then
   exit 0
 fi
 
-cargo run -p desktop --bin desktop
+cargo run -p slint-demo --bin slint-demo
