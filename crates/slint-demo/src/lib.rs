@@ -90,7 +90,7 @@ impl DesktopApp {
                         value: None,
                     }) {
                         if let Some(ui) = weak.upgrade() {
-                            ui.set_status(format!("error: {error}").into());
+                            ui.set_status(format!("Fehler: {error}").into());
                         }
                     }
                 }
@@ -124,7 +124,7 @@ impl DesktopApp {
             });
             match result {
                 Ok(message) => ui.set_status(message.into()),
-                Err(error) => ui.set_status(format!("error: {error}").into()),
+                Err(error) => ui.set_status(format!("Fehler: {error}").into()),
             }
         });
 

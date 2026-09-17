@@ -85,7 +85,7 @@ where
                 input: String::new(),
                 development_file_path: "/workspace/Cargo.toml".to_string(),
                 selected_file: String::new(),
-                status: "ready".to_string(),
+                status: "bereit".to_string(),
                 busy: false,
                 about_open: false,
             })),
@@ -98,7 +98,7 @@ where
         let state = self
             .state
             .lock()
-            .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
         Ok(AgentStateResponse {
             screen: snapshot.screen,
             status: state.status.clone(),
@@ -112,49 +112,49 @@ where
         let state = self
             .state
             .lock()
-            .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
         let mut elements = vec![
             AgentElement {
                 id: "main.input".to_string(),
                 role: "textbox".to_string(),
                 enabled: true,
                 value: Some(state.input.clone()),
-                accessible_label: Some("Main input".to_string()),
+                accessible_label: Some("Haupteingabe".to_string()),
             },
             AgentElement {
                 id: "main.submit".to_string(),
                 role: "button".to_string(),
                 enabled: !state.input.trim().is_empty(),
                 value: None,
-                accessible_label: Some("Submit".to_string()),
+                accessible_label: Some("Senden".to_string()),
             },
             AgentElement {
                 id: "main.reset".to_string(),
                 role: "button".to_string(),
                 enabled: true,
                 value: None,
-                accessible_label: Some("Reset".to_string()),
+                accessible_label: Some("Zurücksetzen".to_string()),
             },
             AgentElement {
                 id: "main.file-picker".to_string(),
                 role: "button".to_string(),
                 enabled: true,
                 value: Some(state.development_file_path.clone()),
-                accessible_label: Some("Choose file".to_string()),
+                accessible_label: Some("Datei auswählen".to_string()),
             },
             AgentElement {
                 id: "main.selected-file".to_string(),
                 role: "status".to_string(),
                 enabled: true,
                 value: Some(state.selected_file.clone()),
-                accessible_label: Some("Selected file path".to_string()),
+                accessible_label: Some("Ausgewählter Dateipfad".to_string()),
             },
             AgentElement {
                 id: "main.status".to_string(),
                 role: "status".to_string(),
                 enabled: true,
                 value: Some(state.status.clone()),
-                accessible_label: Some("Application status".to_string()),
+                accessible_label: Some("Anwendungsstatus".to_string()),
             },
             AgentElement {
                 id: "help.about".to_string(),
@@ -206,9 +206,9 @@ where
             let mut state = self
                 .state
                 .lock()
-                .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
             state.busy = true;
-            state.status = "running".to_string();
+            state.status = "wird ausgeführt".to_string();
         }
         let result = self.service.execute_command(ExampleCommand {
             command: request.command,
@@ -217,11 +217,11 @@ where
         let mut state = self
             .state
             .lock()
-            .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
         state.busy = false;
         match &result {
-            Ok(_) => state.status = "success".to_string(),
-            Err(_) => state.status = "error".to_string(),
+            Ok(_) => state.status = "erfolgreich".to_string(),
+            Err(_) => state.status = "Fehler".to_string(),
         }
         result
     }
@@ -240,7 +240,7 @@ where
                 let value = self
                     .state
                     .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?
+                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
                     .input
                     .clone();
                 self.execute_command(AgentCommandRequest {
@@ -252,57 +252,53 @@ where
                 let value = action.value.unwrap_or_default();
                 if value.len() > 4096 {
                     return Err(ApplicationError::InvalidPayload(
-                        "input exceeds 4096 characters".into(),
+                        "Eingabe überschreitet 4096 Zeichen".into(),
                     ));
                 }
-                let mut state = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                let mut state = self.state.lock().map_err(|_| {
+                    ApplicationError::Repository("Zustandssperre beschädigt".into())
+                })?;
                 state.input = value;
-                Ok("value updated".into())
+                Ok("Wert aktualisiert".into())
             }
             "click" if action.id == "main.reset" => {
-                let mut state = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                let mut state = self.state.lock().map_err(|_| {
+                    ApplicationError::Repository("Zustandssperre beschädigt".into())
+                })?;
                 state.input.clear();
-                state.status = "ready".into();
-                Ok("reset".into())
+                state.status = "bereit".into();
+                Ok("zurückgesetzt".into())
             }
             "set_value" if action.id == "main.file-picker" => {
                 let value = action.value.unwrap_or_default();
                 if value.trim().is_empty() {
                     return Err(ApplicationError::InvalidPayload(
-                        "development file path must not be empty".into(),
+                        "Entwicklungsdateipfad darf nicht leer sein".into(),
                     ));
                 }
                 if value.len() > 4096 {
                     return Err(ApplicationError::InvalidPayload(
-                        "development file path exceeds 4096 characters".into(),
+                        "Entwicklungsdateipfad überschreitet 4096 Zeichen".into(),
                     ));
                 }
-                let mut state = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                let mut state = self.state.lock().map_err(|_| {
+                    ApplicationError::Repository("Zustandssperre beschädigt".into())
+                })?;
                 state.development_file_path = value;
-                Ok("development file path updated".into())
+                Ok("Entwicklungsdateipfad aktualisiert".into())
             }
             "click" if action.id == "main.file-picker" => {
-                let mut state = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                let mut state = self.state.lock().map_err(|_| {
+                    ApplicationError::Repository("Zustandssperre beschädigt".into())
+                })?;
                 state.selected_file = state.development_file_path.clone();
-                Ok("file selected".into())
+                Ok("Datei ausgewählt".into())
             }
             "get_value" if action.id == "main.file-picker" => {
                 let value = self
                     .state
                     .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?
+                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
                     .development_file_path
                     .clone();
                 Ok(value)
@@ -311,32 +307,30 @@ where
                 let value = self
                     .state
                     .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?
+                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
                     .selected_file
                     .clone();
                 Ok(value)
             }
             "click" if action.id == "help.about" => {
-                let mut state = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                let mut state = self.state.lock().map_err(|_| {
+                    ApplicationError::Repository("Zustandssperre beschädigt".into())
+                })?;
                 state.about_open = true;
-                Ok("about opened".into())
+                Ok("Info-Dialog geöffnet".into())
             }
             "click" if action.id == "about.close" => {
-                let mut state = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                let mut state = self.state.lock().map_err(|_| {
+                    ApplicationError::Repository("Zustandssperre beschädigt".into())
+                })?;
                 state.about_open = false;
-                Ok("about closed".into())
+                Ok("Info-Dialog geschlossen".into())
             }
             "get_value" if action.id == "main.input" => {
                 let value = self
                     .state
                     .lock()
-                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?
+                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
                     .input
                     .clone();
                 Ok(value)
@@ -346,10 +340,10 @@ where
                     || action.id == "main.submit"
                     || action.id == "main.file-picker" =>
             {
-                Ok(format!("focused {}", action.id))
+                Ok(format!("{} fokussiert", action.id))
             }
             _ => Err(ApplicationError::InvalidPayload(format!(
-                "unsupported action or element: {} {}",
+                "nicht unterstützte Aktion oder unbekanntes Element: {} {}",
                 action.action, action.id
             ))),
         }
@@ -497,7 +491,7 @@ mod tests {
             value: None,
         })
         .unwrap();
-        assert_eq!(api.get_state().unwrap().status, "success");
+        assert_eq!(api.get_state().unwrap().status, "erfolgreich");
     }
 
     #[test]

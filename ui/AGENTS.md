@@ -43,6 +43,10 @@ before making a visual or interaction change.
 
 ## Required interaction and accessibility
 
+- All user-visible UI strings must be German by default, including labels,
+  dialogs, hints, empty states, tooltips, validation messages, and accessible
+  labels. Do not translate stable semantic identifiers such as `agent-id`
+  values, callback names, or agent API element/action ids.
 - Every interactive control requires a stable `agent-id`, accessible role,
   accessible label, keyboard access, visible focus, and distinct hover,
   pressed, disabled, and invalid states where applicable.

@@ -115,7 +115,7 @@ second UI state.
 ```json
 {
   "screen": "main",
-  "status": "ready",
+  "status": "bereit",
   "busy": false
 }
 ```
@@ -126,10 +126,10 @@ second UI state.
   "screen": "main",
   "elements": [
     { "id": "main.input", "role": "textbox", "enabled": true, "value": "" },
-    { "id": "main.file-picker", "role": "button", "enabled": true, "value": "/workspace/Cargo.toml", "accessible_label": "Choose file" },
-    { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Selected file path" },
-    { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Submit" },
-    { "id": "main.status", "role": "status", "enabled": true, "value": "ready" },
+    { "id": "main.file-picker", "role": "button", "enabled": true, "value": "/workspace/Cargo.toml", "accessible_label": "Datei auswählen" },
+    { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Ausgewählter Dateipfad" },
+    { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Senden" },
+    { "id": "main.status", "role": "status", "enabled": true, "value": "bereit", "accessible_label": "Anwendungsstatus" },
     { "id": "help.about", "role": "menuitem", "enabled": true, "accessible_label": "Über" }
   ]
 }

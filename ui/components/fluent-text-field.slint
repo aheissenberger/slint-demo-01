@@ -1,7 +1,7 @@
 import { Theme } from "../theme/theme.slint";
 
 export component FluentTextField inherits Rectangle {
-    in property <string> label: "Label";
+    in property <string> label: "Beschriftung";
     in-out property <string> value: "";
     in property <string> placeholder: "";
     in property <bool> disabled: false;
@@ -58,7 +58,7 @@ export component FluentTextField inherits Rectangle {
                 font-family: Theme.font_family;
                 accessible-role: text-input;
                 accessible-label: root.label-for-accessibility != "" ? root.label-for-accessibility : root.label;
-                accessible-description: root.invalid ? root.agent-id + ", invalid value" : root.agent-id;
+                accessible-description: root.invalid ? root.agent-id + ", ungültiger Wert" : root.agent-id;
                 edited => { root.edited(input.text); }
             }
 

@@ -63,15 +63,15 @@
         Name='slint-demo'
         UpgradeCode='9C4ED75C-88C5-4CE9-9307-CCEB6AB43B75'
         Manufacturer='Copilot'
-        Language='1033'
+        Language='1031'
         Codepage='1252'
         Version='$(var.Version)'>
 
         <Package Id='*'
-            Keywords='Installer'
+            Keywords='Installationsprogramm'
             Manufacturer='Copilot'
             InstallerVersion='450'
-            Languages='1033'
+            Languages='1031'
             Compressed='yes'
             InstallScope='perMachine'
             SummaryCodepage='1252'
@@ -79,10 +79,10 @@
 
         <MajorUpgrade
             Schedule='afterInstallInitialize'
-            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+            DowngradeErrorMessage='Eine neuere Version von [ProductName] ist bereits installiert. Das Setup wird beendet.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='slint-demo Installation'/>
+        <Property Id='DiskPrompt' Value='slint-demo-Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
@@ -133,8 +133,8 @@
                     <Component Id='ApplicationShortcut' Guid='*'>
                         <Shortcut Id='ApplicationStartMenuShortcut'
                             Name='slint-demo'
-                            Description='Slint demo desktop application'
-                            Target='[#exe0]'
+                            Description='Slint-Demo-Desktopanwendung'
+                            Target='[Bin]slint-demo.exe'
                             WorkingDirectory='APPLICATIONFOLDER'/>
                         <RemoveFolder Id='CleanUpShortCut' Directory='ApplicationProgramsFolder' On='uninstall'/>
                         <RegistryValue Root='HKCU'
@@ -150,8 +150,8 @@
 
         <Feature
             Id='Binaries'
-            Title='Application'
-            Description='Installs all binaries and the license.'
+            Title='Anwendung'
+            Description='Installiert alle Programmdateien und die Lizenz.'
             Level='1'
             ConfigurableDirectory='APPLICATIONFOLDER'
             AllowAdvertise='no'
@@ -169,8 +169,8 @@
 
             <Feature
                 Id='Environment'
-                Title='PATH Environment Variable'
-                Description='Add the install location of the [ProductName] executable to the PATH system environment variable. This allows the [ProductName] executable to be called from any location.'
+                Title='PATH-Umgebungsvariable'
+                Description='F&#252;gt den Installationsort der ausf&#252;hrbaren Datei [ProductName] zur Systemumgebungsvariable PATH hinzu. Dadurch kann [ProductName] von jedem Ort aus aufgerufen werden.'
                 Level='1'
                 Absent='allow'>
                 <ComponentRef Id='Path'/>

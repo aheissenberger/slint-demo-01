@@ -5,6 +5,11 @@ This repository is designed for agentic software development inside a Linux DevC
 ## Core principles
 - Keep business logic in Rust domain/application layers.
 - Keep the Slint UI as a thin presentation layer.
+- Write all user-visible product text in German by default, including UI
+  labels, dialogs, validation messages, installer text, documentation intended
+  for end users, and agent-facing status/error strings. Keep internal
+  identifiers, code symbols, protocol fields, and tests in their established
+  language unless changing them is explicitly required.
 - Expose semantic UI identifiers (`screen.element`, `dialog.element`, etc.).
 - Prefer application APIs over UI automation for normal operations.
 - Every UI element must be fully usable through the agent API with no

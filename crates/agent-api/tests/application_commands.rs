@@ -10,5 +10,5 @@ fn unsupported_commands_return_a_stable_validation_error() {
             arguments: serde_json::json!({"value": "test"}),
         })
         .expect_err("unknown commands must be rejected");
-    assert!(error.to_string().contains("unsupported command"));
+    assert!(error.to_string().contains("nicht unterstützter Befehl"));
 }

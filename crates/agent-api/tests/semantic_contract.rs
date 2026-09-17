@@ -38,7 +38,7 @@ fn semantic_contract_exposes_stable_controls_and_state_transitions() {
         arguments: serde_json::json!({ "value": "Integration test" }),
     })
     .expect("submit command");
-    assert_eq!(api.get_state().expect("state").status, "success");
+    assert_eq!(api.get_state().expect("state").status, "erfolgreich");
 }
 
 #[test]

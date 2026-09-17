@@ -70,7 +70,7 @@ jobs:
           cargo wix --version
 
       - name: Build Windows installer (MSI)
-        run: cargo wix --package slint-demo --nocapture --output target/wix/slint-demo.msi
+        run: cargo wix --package slint-demo --culture de-DE --nocapture --output target/wix/slint-demo.msi
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v7

@@ -31,7 +31,7 @@ impl ApplicationCommand {
         match value {
             "submit" => Ok(Self::Submit),
             _ => Err(ApplicationError::InvalidPayload(format!(
-                "unsupported command: {value}"
+                "nicht unterstützter Befehl: {value}"
             ))),
         }
     }
@@ -39,11 +39,11 @@ impl ApplicationCommand {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApplicationError {
-    #[error("domain error: {0}")]
+    #[error("Domänenfehler: {0}")]
     Domain(#[from] DomainError),
-    #[error("repository error: {0}")]
+    #[error("Repository-Fehler: {0}")]
     Repository(String),
-    #[error("invalid payload: {0}")]
+    #[error("ungültige Nutzdaten: {0}")]
     InvalidPayload(String),
 }
 
@@ -85,7 +85,7 @@ where
             .unwrap_or("");
         if value.trim().is_empty() {
             return Err(ApplicationError::InvalidPayload(
-                "value must not be empty".into(),
+                "Wert darf nicht leer sein".into(),
             ));
         }
 
@@ -105,21 +105,21 @@ where
 
         self.records
             .lock()
-            .map_err(|_| ApplicationError::Repository("records lock poisoned".into()))?
+            .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))?
             .push(record);
-        Ok(format!("executed {}", command.command))
+        Ok("Befehl ausgeführt".into())
     }
 
     pub fn list_records(&self) -> Result<Vec<ExampleRecord>, ApplicationError> {
         self.records
             .lock()
             .map(|records| records.clone())
-            .map_err(|_| ApplicationError::Repository("records lock poisoned".into()))
+            .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))
     }
 
     pub fn validate_input(&self, value: &str) -> Result<String, ApplicationError> {
         if value.trim().is_empty() {
-            return Err(ApplicationError::InvalidPayload("field required".into()));
+            return Err(ApplicationError::InvalidPayload("Feld erforderlich".into()));
         }
 
         Ok(value.trim().to_string())

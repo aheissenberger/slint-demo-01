@@ -4,7 +4,7 @@ import { AboutDialog } from "./screens/about-dialog.slint";
 import { Theme } from "./theme/theme.slint";
 
 export component MainWindow inherits Window {
-    in property <string> status: "ready";
+    in property <string> status: "bereit";
     in property <string> app-version: "0.1.0";
     in-out property <string> input-value: "";
     in-out property <string> selected-file: "";
@@ -138,7 +138,7 @@ export component MainWindow inherits Window {
             alignment: start;
 
             Text {
-                text: "Send a value";
+                text: "Wert senden";
                 color: Theme.text_primary;
                 font-size: Theme.title_size;
                 font-family: Theme.font_family;
@@ -147,7 +147,7 @@ export component MainWindow inherits Window {
             }
 
             Text {
-                text: "Enter a value to send it to the agent.";
+                text: "Geben Sie einen Wert ein, um ihn an den Agenten zu senden.";
                 color: Theme.text_secondary;
                 font-size: Theme.body_size;
                 font-family: Theme.font_family;
@@ -163,24 +163,24 @@ export component MainWindow inherits Window {
                 color: Theme.text_secondary;
                 font-size: Theme.caption_size;
                 font-family: Theme.font_family;
-                accessible-label: "Application status";
+                accessible-label: "Anwendungsstatus";
                 height: Theme.caption_line_height;
             }
 
             FluentTextField {
                 width: parent.width;
-                label: "Value";
-                placeholder: "Enter a value";
+                label: "Wert";
+                placeholder: "Wert eingeben";
                 value <=> root.input-value;
                 agent-id: "main.input";
-                label-for-accessibility: "Main input";
+                label-for-accessibility: "Haupteingabe";
                 edited(value) => {
                     root.input-changed(value);
                 }
             }
 
             FluentButton {
-                label: "Choose file";
+                label: "Datei auswählen";
                 agent-id: "main.file-picker";
                 clicked => {
                     root.pick-file();
@@ -193,12 +193,12 @@ export component MainWindow inherits Window {
             Text {
                 width: parent.width;
                 height: Theme.body_line_height * 2;
-                text: root.selected-file == "" ? "No file selected" : root.selected-file;
+                text: root.selected-file == "" ? "Keine Datei ausgewählt" : root.selected-file;
                 color: root.selected-file == "" ? Theme.text_secondary : Theme.text_primary;
                 font-size: Theme.body_size;
                 font-family: Theme.font_family;
                 wrap: word-wrap;
-                accessible-label: "Selected file path";
+                accessible-label: "Ausgewählter Dateipfad";
             }
 
             HorizontalLayout {
@@ -208,7 +208,7 @@ export component MainWindow inherits Window {
                 height: Theme.control_height;
 
                 FluentButton {
-                    label: "Reset";
+                    label: "Zurücksetzen";
                     agent-id: "main.reset";
                     clicked => {
                         root.input-value = "";
@@ -217,7 +217,7 @@ export component MainWindow inherits Window {
                 }
 
                 FluentButton {
-                    label: "Submit";
+                    label: "Senden";
                     primary: true;
                     disabled: root.input-value == "";
                     agent-id: "main.submit";

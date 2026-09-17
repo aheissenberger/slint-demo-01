@@ -47,11 +47,11 @@ pub struct ExampleRecord {
 
 #[derive(Debug, Error)]
 pub enum DomainError {
-    #[error("invalid app identifier")]
+    #[error("ungültige Anwendungskennung")]
     InvalidAppId,
-    #[error("operation is not allowed in the current state")]
+    #[error("Vorgang ist im aktuellen Zustand nicht erlaubt")]
     InvalidState,
-    #[error("value must be non-empty")]
+    #[error("Wert darf nicht leer sein")]
     EmptyValue,
 }
 
@@ -67,7 +67,7 @@ impl AppStateSnapshot {
     pub fn ready() -> Self {
         Self {
             screen: "main".to_string(),
-            status: "ready".to_string(),
+            status: "bereit".to_string(),
             busy: false,
             last_updated: Utc::now(),
         }
@@ -82,7 +82,7 @@ mod tests {
     fn app_id_rejects_blank_values() {
         assert_eq!(
             AppId::new("  ").unwrap_err().to_string(),
-            "invalid app identifier"
+            "ungültige Anwendungskennung"
         );
         assert_eq!(AppId::new("demo").unwrap().as_str(), "demo");
     }
