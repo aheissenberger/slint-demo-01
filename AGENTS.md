@@ -16,6 +16,8 @@ This repository is designed for agentic software development inside a Linux DevC
   difference in outcome from using the native rendered UI; see "Agent API
   parity (mandatory)" below.
 - Keep tooling deterministic and reproducible via scripts under `scripts/`.
+- When adding new crates, always use the current stable release. Verify the
+  version against the registry before committing dependency manifest changes.
 - Validate with `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings` and the script commands documented below.
 
 ## Commands
