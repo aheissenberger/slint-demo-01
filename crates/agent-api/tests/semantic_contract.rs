@@ -87,3 +87,40 @@ fn about_menu_and_dialog_are_part_of_the_stable_semantic_contract() {
         "about dialog should be removed once closed"
     );
 }
+
+#[test]
+fn development_file_picker_path_is_configurable_and_selected_on_click() {
+    let api = api();
+    let initial = api.inspect_ui().expect("initial UI inspection");
+    let picker = initial
+        .elements
+        .iter()
+        .find(|element| element.id == "main.file-picker")
+        .expect("file picker element");
+    assert_eq!(picker.role, "button");
+    assert_eq!(picker.value.as_deref(), Some("/workspace/Cargo.toml"));
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "set_value".into(),
+        id: "main.file-picker".into(),
+        value: Some("/tmp/agent-selected.txt".into()),
+    })
+    .expect("configure development file path");
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "main.file-picker".into(),
+        value: None,
+    })
+    .expect("select configured development file");
+
+    let updated = api.inspect_ui().expect("updated UI inspection");
+    let selected_file = updated
+        .elements
+        .iter()
+        .find(|element| element.id == "main.selected-file")
+        .expect("selected file element");
+    assert_eq!(
+        selected_file.value.as_deref(),
+        Some("/tmp/agent-selected.txt")
+    );
+}

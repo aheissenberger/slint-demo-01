@@ -63,10 +63,12 @@ DevContainer so its long-running launcher picks up the current
 `slint-demo` command. A stale launcher from an earlier crate name can keep
 retrying a nonexistent binary while Xvfb and VNC remain healthy.
 
-The default desktop feature starts the loopback-only development agent API.
-Use `cargo build -p slint-demo --no-default-features` for a production-shaped
-binary without that listener. The current container is a Linux development
-runtime; Windows release builds should use native Windows CI runners.
+The development launch scripts enable the opt-in `agent-api` feature and start
+the loopback-only development agent API. A default build omits that listener;
+use `cargo build -p slint-demo --no-default-features` to make the
+production-shaped posture explicit. The current container is a Linux
+development runtime; Windows release builds should use native Windows CI
+runners.
 The Windows GitHub Actions workflow builds that binary on `windows-latest` and
 uploads `slint-demo.exe` as the `slint-demo-windows-x86_64` workflow artifact.
 It then packages the binary into an MSI installer using

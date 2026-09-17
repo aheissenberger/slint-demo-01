@@ -77,6 +77,32 @@ impl DesktopApp {
             }
         });
 
+        ui.on_pick_file({
+            let weak = ui.as_weak();
+            #[cfg(feature = "agent-api")]
+            let agent_api = Arc::clone(&agent_api);
+            move || {
+                #[cfg(feature = "agent-api")]
+                {
+                    if let Err(error) = agent_api.execute_ui_action(agent_api::AgentActionRequest {
+                        action: "click".to_string(),
+                        id: "main.file-picker".to_string(),
+                        value: None,
+                    }) {
+                        if let Some(ui) = weak.upgrade() {
+                            ui.set_status(format!("error: {error}").into());
+                        }
+                    }
+                }
+                #[cfg(not(feature = "agent-api"))]
+                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    if let Some(ui) = weak.upgrade() {
+                        ui.set_selected_file(path.to_string_lossy().into_owned().into());
+                    }
+                }
+            }
+        });
+
         #[cfg(feature = "agent-api")]
         ui.on_about_visibility_changed({
             let agent_api = Arc::clone(&agent_api);
@@ -122,6 +148,16 @@ impl DesktopApp {
                     {
                         if ui.get_input_value().as_str() != input {
                             ui.set_input_value(input.into());
+                        }
+                    }
+                    if let Some(selected_file) = inspection
+                        .elements
+                        .iter()
+                        .find(|element| element.id == "main.selected-file")
+                        .and_then(|element| element.value.as_deref())
+                    {
+                        if ui.get_selected_file().as_str() != selected_file {
+                            ui.set_selected_file(selected_file.into());
                         }
                     }
                     let about_open = inspection

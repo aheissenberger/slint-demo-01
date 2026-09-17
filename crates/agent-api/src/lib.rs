@@ -61,6 +61,8 @@ pub struct AgentErrorResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RuntimeState {
     input: String,
+    development_file_path: String,
+    selected_file: String,
     status: String,
     busy: bool,
     about_open: bool,
@@ -81,6 +83,8 @@ where
             service,
             state: Arc::new(Mutex::new(RuntimeState {
                 input: String::new(),
+                development_file_path: "/workspace/Cargo.toml".to_string(),
+                selected_file: String::new(),
                 status: "ready".to_string(),
                 busy: false,
                 about_open: false,
@@ -130,6 +134,20 @@ where
                 enabled: true,
                 value: None,
                 accessible_label: Some("Reset".to_string()),
+            },
+            AgentElement {
+                id: "main.file-picker".to_string(),
+                role: "button".to_string(),
+                enabled: true,
+                value: Some(state.development_file_path.clone()),
+                accessible_label: Some("Choose file".to_string()),
+            },
+            AgentElement {
+                id: "main.selected-file".to_string(),
+                role: "status".to_string(),
+                enabled: true,
+                value: Some(state.selected_file.clone()),
+                accessible_label: Some("Selected file path".to_string()),
             },
             AgentElement {
                 id: "main.status".to_string(),
@@ -253,6 +271,51 @@ where
                 state.status = "ready".into();
                 Ok("reset".into())
             }
+            "set_value" if action.id == "main.file-picker" => {
+                let value = action.value.unwrap_or_default();
+                if value.trim().is_empty() {
+                    return Err(ApplicationError::InvalidPayload(
+                        "development file path must not be empty".into(),
+                    ));
+                }
+                if value.len() > 4096 {
+                    return Err(ApplicationError::InvalidPayload(
+                        "development file path exceeds 4096 characters".into(),
+                    ));
+                }
+                let mut state = self
+                    .state
+                    .lock()
+                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                state.development_file_path = value;
+                Ok("development file path updated".into())
+            }
+            "click" if action.id == "main.file-picker" => {
+                let mut state = self
+                    .state
+                    .lock()
+                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?;
+                state.selected_file = state.development_file_path.clone();
+                Ok("file selected".into())
+            }
+            "get_value" if action.id == "main.file-picker" => {
+                let value = self
+                    .state
+                    .lock()
+                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?
+                    .development_file_path
+                    .clone();
+                Ok(value)
+            }
+            "get_value" if action.id == "main.selected-file" => {
+                let value = self
+                    .state
+                    .lock()
+                    .map_err(|_| ApplicationError::Repository("state lock poisoned".into()))?
+                    .selected_file
+                    .clone();
+                Ok(value)
+            }
             "click" if action.id == "help.about" => {
                 let mut state = self
                     .state
@@ -278,7 +341,11 @@ where
                     .clone();
                 Ok(value)
             }
-            "focus" if action.id == "main.input" || action.id == "main.submit" => {
+            "focus"
+                if action.id == "main.input"
+                    || action.id == "main.submit"
+                    || action.id == "main.file-picker" =>
+            {
                 Ok(format!("focused {}", action.id))
             }
             _ => Err(ApplicationError::InvalidPayload(format!(

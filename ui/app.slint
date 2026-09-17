@@ -7,9 +7,11 @@ export component MainWindow inherits Window {
     in property <string> status: "ready";
     in property <string> app-version: "0.1.0";
     in-out property <string> input-value: "";
+    in-out property <string> selected-file: "";
     out property <bool> about-visible: about-popup.is-open;
     callback submit(string);
     callback input-changed(string);
+    callback pick-file();
     callback reset();
     callback about-visibility-changed(bool);
 
@@ -25,9 +27,9 @@ export component MainWindow inherits Window {
 
     title: "Slint Agent Desktop";
     preferred-width: 740px;
-    preferred-height: 460px;
+    preferred-height: Theme.window_preferred_height;
     min-width: 520px;
-    min-height: 360px;
+    min-height: Theme.window_min_height;
 
     MenuBar {
         Menu {
@@ -175,6 +177,28 @@ export component MainWindow inherits Window {
                 edited(value) => {
                     root.input-changed(value);
                 }
+            }
+
+            FluentButton {
+                label: "Choose file";
+                agent-id: "main.file-picker";
+                clicked => {
+                    root.pick-file();
+                }
+            }
+
+            // agent-id: "main.selected-file"
+            // Plain `Text` has no `agent-id` property; this marker keeps the
+            // agent-api coverage check in sync with the selected path output.
+            Text {
+                width: parent.width;
+                height: Theme.body_line_height * 2;
+                text: root.selected-file == "" ? "No file selected" : root.selected-file;
+                color: root.selected-file == "" ? Theme.text_secondary : Theme.text_primary;
+                font-size: Theme.body_size;
+                font-family: Theme.font_family;
+                wrap: word-wrap;
+                accessible-label: "Selected file path";
             }
 
             HorizontalLayout {

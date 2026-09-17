@@ -27,14 +27,20 @@ duplicating state or command handling.
 - `POST /agent/ui/action`
 
 The desktop binary binds the development-only HTTP transport to
-`127.0.0.1:8080` when built with the default `agent-api` feature. A production
-build can disable it with `cargo build -p slint-demo --no-default-features`; the
-UI remains available without opening an automation listener. It is not enabled
-as a public service. Use
+`127.0.0.1:8080` when built with the opt-in `agent-api` feature. A production
+build omits it by default; `cargo build -p slint-demo --no-default-features`
+makes that posture explicit. The UI remains available without opening an
+automation listener. It is not enabled as a public service. Use
 `scripts/agent state` and `scripts/agent ui` to inspect before acting, then
 `scripts/agent command submit value` for application intent or
 `scripts/agent set main.input value` and `scripts/agent click main.submit` to
-exercise the human-facing UI path.
+exercise the human-facing UI path. In development, configure the deterministic
+file-picker result with `scripts/agent set main.file-picker /path/to/file`,
+then select it with `scripts/agent click main.file-picker`. The resulting path
+is exposed as `main.selected-file` and appears beneath the button. This
+development behavior deliberately bypasses the system dialog because it is not
+available in the VNC automation environment; builds without `agent-api` open
+the platform-native picker instead.
 
 Stable UI action errors use an application error envelope with a machine-readable
 `code` and a diagnostic `message`. Application commands and UI actions share the
@@ -120,6 +126,8 @@ second UI state.
   "screen": "main",
   "elements": [
     { "id": "main.input", "role": "textbox", "enabled": true, "value": "" },
+    { "id": "main.file-picker", "role": "button", "enabled": true, "value": "/workspace/Cargo.toml", "accessible_label": "Choose file" },
+    { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Selected file path" },
     { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Submit" },
     { "id": "main.status", "role": "status", "enabled": true, "value": "ready" },
     { "id": "help.about", "role": "menuitem", "enabled": true, "accessible_label": "Über" }
