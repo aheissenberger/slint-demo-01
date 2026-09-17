@@ -41,6 +41,30 @@ jobs:
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "slint-demo") | .version')
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate macOS signing configuration
+        if: github.event_name != 'pull_request'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for required_secret in \
+            APPLE_CERTIFICATE_BASE64 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_DEVELOPER_ID_APPLICATION \
+            APPLE_ID \
+            APPLE_TEAM_ID \
+            APPLE_APP_SPECIFIC_PASSWORD; do
+            if [[ -z "${!required_secret}" ]]; then
+              echo "::error::${required_secret} must be configured to produce a Gatekeeper-compatible macOS build."
+              exit 1
+            fi
+          done
+
       - name: Package macOS app bundle
         env:
           APP_VERSION: ${{ steps.package-version.outputs.version }}
@@ -80,18 +104,97 @@ jobs:
           </plist>
           PLIST
 
-      - name: Archive macOS app bundle (preserve permissions)
+      - name: Import Developer ID certificate
+        if: github.event_name != 'pull_request'
+        id: signing
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          certificate_path="${RUNNER_TEMP}/developer-id-application.p12"
+          keychain_path="${RUNNER_TEMP}/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+
+          printf '%s' "${APPLE_CERTIFICATE_BASE64}" | base64 -D > "${certificate_path}"
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security import "${certificate_path}" \
+            -k "${keychain_path}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "${keychain_password}" \
+            "${keychain_path}"
+          security list-keychain -d user -s "${keychain_path}"
+
+          echo "keychain_path=${keychain_path}" >> "$GITHUB_OUTPUT"
+          echo "certificate_path=${certificate_path}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign macOS app bundle
+        if: github.event_name != 'pull_request'
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+        run: |
+          set -euo pipefail
+          codesign --force --deep --options runtime --timestamp \
+            --sign "${APPLE_DEVELOPER_ID_APPLICATION}" \
+            "target/release/bundle/slint-demo.app"
+          codesign --verify --deep --strict --verbose=2 \
+            "target/release/bundle/slint-demo.app"
+
+      - name: Create notarization archive
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           cd target/release/bundle
-          # actions/upload-artifact zips directories without preserving the
-          # executable bit, which breaks the bundled binary (Finder falls
-          # back to opening it as a plain folder). tar preserves permissions.
-          tar -czf slint-demo-macos-arm64.tar.gz "slint-demo.app"
+          ditto -c -k --keepParent "slint-demo.app" "slint-demo-macos-arm64.zip"
+
+      - name: Notarize macOS app bundle
+        if: github.event_name != 'pull_request'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "target/release/bundle/slint-demo-macos-arm64.zip" \
+            --apple-id "${APPLE_ID}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+            --wait
+          xcrun stapler staple "target/release/bundle/slint-demo.app"
+          xcrun stapler validate "target/release/bundle/slint-demo.app"
+          spctl --assess --type execute --verbose=4 "target/release/bundle/slint-demo.app"
+
+      - name: Create distributable macOS archive
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          cd target/release/bundle
+          rm "slint-demo-macos-arm64.zip"
+          ditto -c -k --keepParent "slint-demo.app" "slint-demo-macos-arm64.zip"
+
+      - name: Archive unsigned pull-request app bundle
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          cd target/release/bundle
+          ditto -c -k --keepParent "slint-demo.app" "slint-demo-macos-arm64-unsigned.zip"
+
+      - name: Remove signing materials
+        if: always() && steps.signing.outcome == 'success'
+        run: |
+          set -euo pipefail
+          security delete-keychain "${{ steps.signing.outputs.keychain_path }}"
+          rm -f "${{ steps.signing.outputs.certificate_path }}"
 
       - name: Upload macOS app bundle
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
-          name: slint-demo-macos-arm64
-          path: target/release/bundle/slint-demo-macos-arm64.tar.gz
+          name: ${{ github.event_name == 'pull_request' && 'slint-demo-macos-arm64-unsigned' || 'slint-demo-macos-arm64' }}
+          path: ${{ github.event_name == 'pull_request' && 'target/release/bundle/slint-demo-macos-arm64-unsigned.zip' || 'target/release/bundle/slint-demo-macos-arm64.zip' }}
           if-no-files-found: error

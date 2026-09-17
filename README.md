@@ -54,3 +54,27 @@ See the architecture and docs folders for the intended production structure.
   troubleshooting
 - `tests/ui/baselines/` — approved visual reference images
 - `artifacts/failures/` — generated UI failure bundles (ignored by default)
+
+## macOS distribution builds
+
+The macOS workflow produces a signed, notarized, and stapled application for
+pushes to `main` and manual runs. These steps are required for an application
+downloaded from GitHub to pass Gatekeeper; an unsigned application is not a
+release artifact.
+
+Configure these GitHub Actions secrets before running a distribution build:
+
+- `APPLE_CERTIFICATE_BASE64` — Base64-encoded `.p12` export of the **Developer
+  ID Application** certificate and private key.
+- `APPLE_CERTIFICATE_PASSWORD` — Password used when exporting that `.p12`.
+- `APPLE_DEVELOPER_ID_APPLICATION` — Signing identity, for example `Developer
+  ID Application: Example Company (ABCDE12345)`.
+- `APPLE_ID` — Apple ID used for notarization.
+- `APPLE_TEAM_ID` — Apple Developer Team ID.
+- `APPLE_APP_SPECIFIC_PASSWORD` — App-specific password for that Apple ID.
+
+Pull-request builds intentionally publish an artifact named
+`slint-demo-macos-arm64-unsigned`; use it only for CI inspection, not end-user
+distribution. Download `slint-demo-macos-arm64.zip` from a successful
+distribution build, extract it with Finder, and open the resulting
+`slint-demo.app`.
