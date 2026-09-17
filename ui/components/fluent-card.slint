@@ -1,0 +1,26 @@
+import { Theme } from "../theme/theme.slint";
+
+export component FluentCard inherits Rectangle {
+    in property <string> title: "";
+    in property <bool> elevated: false;
+    border-radius: Theme.radius_2;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.panel;
+    padding: Theme.space_4;
+    opacity: elevated ? 1 : 0.98;
+
+    VerticalLayout {
+        spacing: Theme.space_3;
+
+        if (root.title != "") : Text {
+            text: root.title;
+            color: Theme.text_primary;
+            font-size: Theme.subtitle_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.strong_weight;
+        }
+
+        @children
+    }
+}

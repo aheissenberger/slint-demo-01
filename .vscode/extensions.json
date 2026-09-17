@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "rust-lang.rust-analyzer",
+    "tamasfe.even-better-toml",
+    "slint.slint",
+    "vadimcn.vscode-lldb",
+    "ms-vscode.makefile-tools",
+    "ms-azuretools.vscode-docker"
+  ]
+}

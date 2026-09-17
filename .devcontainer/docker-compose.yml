@@ -1,0 +1,34 @@
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    working_dir: /workspace
+    tty: true
+    stdin_open: true
+    environment:
+      DISPLAY: :1
+      XDG_RUNTIME_DIR: /tmp/runtime-dir
+      RUSTUP_HOME: /root/.rustup
+      CARGO_HOME: /root/.cargo
+      CARGO_TARGET_DIR: /workspace/target
+    volumes:
+      - ..:/workspace:cached
+      - cargo-downloads:/root/.cargo/downloads
+      - cargo-registry:/root/.cargo/registry
+      - cargo-git:/root/.cargo/git
+      - target-cache:/workspace/target
+      - vscode-server:/root/.vscode-server
+      - vscode-server-insiders:/root/.vscode-server-insiders
+    ports:
+      - "127.0.0.1:5900:5900"
+      - "127.0.0.1:6080:6080"
+    command: /bin/bash -lc "/workspace/.devcontainer/scripts/start-desktop.sh"
+
+volumes:
+  cargo-downloads:
+  cargo-registry:
+  cargo-git:
+  target-cache:
+  vscode-server:
+  vscode-server-insiders:

@@ -1,0 +1,77 @@
+import { Theme } from "../theme/theme.slint";
+
+export component FluentTextField inherits Rectangle {
+    in property <string> label: "Label";
+    in property <string> value: "";
+    in property <string> placeholder: "";
+    in property <bool> disabled: false;
+    in property <bool> invalid: false;
+    in property <string> agent-id: "";
+    in property <string> label-for-accessibility: "";
+    callback edited(string);
+
+    border-width: 0px;
+    background: transparent;
+    height: Theme.field_label_height + Theme.space_2 + Theme.field_height;
+    min-width: 240px;
+    clip: true;
+
+    states [
+        focus when input.has-focus : {
+            border-color: Theme.focus;
+        }
+    ]
+
+    VerticalLayout {
+        spacing: Theme.space_2;
+        padding-bottom: Theme.space_1;
+
+        Text {
+            text: root.label;
+            color: Theme.text_primary;
+            font-size: Theme.body_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.body_weight;
+            height: Theme.field_label_height;
+        }
+
+        field := Rectangle {
+            height: Theme.field_height;
+            border-radius: Theme.radius_1;
+            border-width: invalid ? 2px : 1px;
+            border-color: root.invalid ? Theme.error : Theme.border;
+            background: Theme.panel;
+
+            input := TextInput {
+                text: root.value;
+                enabled: !root.disabled;
+                x: Theme.space_2;
+                width: parent.width - Theme.space_2 * 2;
+                height: parent.height;
+                vertical-alignment: center;
+                color: root.disabled ? Theme.text_disabled : Theme.text_primary;
+                font-family: Theme.font_family;
+                accessible-role: text-input;
+                accessible-label: root.label-for-accessibility != "" ? root.label-for-accessibility : root.label;
+                accessible-description: root.agent-id;
+                edited => { root.edited(input.text); }
+            }
+
+            if (root.value == "" && root.placeholder != "") : Text {
+                text: root.placeholder;
+                color: Theme.text_secondary;
+                font-size: Theme.body_size;
+                x: Theme.space_2;
+                font-family: Theme.font_family;
+                vertical-alignment: center;
+            }
+
+            states [
+                focus when input.has-focus : {
+                    border-color: Theme.focus;
+                    border-width: 2px;
+                }
+            ]
+        }
+    }
+}

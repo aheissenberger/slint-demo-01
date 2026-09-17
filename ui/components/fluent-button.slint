@@ -1,0 +1,61 @@
+import { Theme } from "../theme/theme.slint";
+
+export component FluentButton inherits Rectangle {
+    in property <string> label: "Button";
+    in property <bool> primary: false;
+    in property <bool> disabled: false;
+    in property <bool> destructive: false;
+    in property <string> agent-id: "";
+    in property <string> variant: "standard";
+    callback clicked;
+
+    border-radius: Theme.radius_1;
+    border-width: 1px;
+    height: Theme.control_height;
+    min-width: 96px;
+    background: primary ? Theme.accent : (destructive ? Theme.destructive_surface : Theme.panel);
+    border-color: primary ? Theme.accent : Theme.border;
+    opacity: disabled ? 0.5 : 1;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.agent-id;
+
+    states [
+        pressed when touch-area.pressed : {
+            background: primary ? Theme.accent_pressed : (destructive ? Theme.destructive_surface_pressed : Theme.background);
+        }
+        hover when touch-area.has-hover : {
+            background: primary ? Theme.accent_hover : (destructive ? Theme.destructive_surface_hover : Theme.panel_alt);
+        }
+        focus when focus-scope.has-focus : {
+            border-color: Theme.focus;
+            border-width: 2px;
+        }
+    ]
+
+    focus-scope := FocusScope {
+        width: parent.width;
+        height: parent.height;
+
+        touch-area := TouchArea {
+            enabled: !disabled;
+            clicked => { root.clicked(); }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space_2;
+        alignment: center;
+        padding-left: Theme.space_4;
+        padding-right: Theme.space_4;
+
+        Text {
+            text: root.label;
+            color: primary || destructive ? Theme.accent_foreground : Theme.text_primary;
+            font-size: Theme.body_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.strong_weight;
+            vertical-alignment: center;
+        }
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run desktop app",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/desktop",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "DISPLAY": ":1"
+      }
+    }
+  ]
+}

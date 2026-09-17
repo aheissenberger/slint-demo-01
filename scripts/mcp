@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export AGENT_API_ADDR="${AGENT_API_ADDR:-127.0.0.1:8080}"
+exec cargo run --quiet -p agent-api --bin agent-mcp

@@ -1,0 +1,109 @@
+import { FluentButton } from "./components/fluent-button.slint";
+import { FluentTextField } from "./components/fluent-text-field.slint";
+import { Theme } from "./theme/theme.slint";
+
+export component MainWindow inherits Window {
+    in property <string> status: "ready";
+    in-out property <string> input-value: "";
+    callback submit(string);
+    callback input-changed(string);
+    callback reset();
+
+    title: "Slint Agent Desktop";
+    preferred-width: 740px;
+    preferred-height: 420px;
+    min-width: 520px;
+    min-height: 320px;
+    background: Theme.background;
+
+    Rectangle {
+        x: Theme.space_8;
+        y: Theme.space_8;
+        width: parent.width - Theme.space_8 * 2;
+        height: parent.height - Theme.space_8 * 2;
+        border-radius: Theme.radius_3;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-blur: 12px;
+        drop-shadow-offset-y: 2px;
+
+        VerticalLayout {
+            x: Theme.space_6;
+            y: Theme.space_6;
+            width: parent.width - Theme.space_6 * 2;
+            height: parent.height - Theme.space_6 * 2;
+            spacing: Theme.space_4;
+            alignment: start;
+
+            Text {
+                text: "Slint Agent Desktop";
+                color: Theme.text_primary;
+                font-size: Theme.title_size;
+                font-family: Theme.font_family;
+                font-weight: Theme.title_weight;
+                height: 32px;
+            }
+
+            Text {
+                text: "A compact desktop surface for sending a value to the agent.";
+                color: Theme.text_secondary;
+                font-size: Theme.body_size;
+                font-family: Theme.font_family;
+                height: 20px;
+            }
+
+            Text {
+                text: "Application status: " + root.status;
+                color: Theme.text_secondary;
+                font-size: Theme.caption_size;
+                font-family: Theme.font_family;
+                accessible-label: "Application status";
+                height: 18px;
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            FluentTextField {
+                label: "Value";
+                placeholder: "Enter a value";
+                value: root.input-value;
+                agent-id: "main.input";
+                label-for-accessibility: "Main input";
+                edited(value) => {
+                    root.input-value = value;
+                    root.input-changed(value);
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.space_3;
+                alignment: end;
+                height: Theme.control_height;
+
+                FluentButton {
+                    label: "Reset";
+                    agent-id: "main.reset";
+                    clicked => {
+                        root.input-value = "";
+                        root.reset();
+                    }
+                }
+
+                FluentButton {
+                    label: "Submit";
+                    primary: true;
+                    disabled: root.input-value == "";
+                    agent-id: "main.submit";
+                    clicked => {
+                        root.submit(root.input-value);
+                    }
+                }
+            }
+        }
+    }
+}

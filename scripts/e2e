@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DISPLAY="${DISPLAY:-:1}"
+failure_dir="artifacts/failures/e2e"
+cleanup_on_failure() {
+  status=$?
+  if [[ "$status" -ne 0 ]]; then
+    mkdir -p "$failure_dir"
+    ./scripts/doctor --json > "$failure_dir/environment.json" 2>/dev/null || true
+    curl --fail --silent http://127.0.0.1:8080/agent/state > "$failure_dir/state.json" 2>/dev/null || true
+    curl --fail --silent http://127.0.0.1:8080/agent/ui > "$failure_dir/ui.json" 2>/dev/null || true
+    ./scripts/screenshot e2e-failure > /dev/null 2>&1 || true
+    cp artifacts/screenshots/e2e-failure.png "$failure_dir/screenshot.png" 2>/dev/null || true
+    ./scripts/agent logs --json > "$failure_dir/logs.json" 2>/dev/null || true
+    echo "E2E failure artifacts written to $failure_dir" >&2
+  fi
+  exit "$status"
+}
+trap cleanup_on_failure EXIT
+
+if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+  echo "DISPLAY $DISPLAY is unavailable; start the DevContainer desktop stack first" >&2
+  exit 1
+fi
+
+if ! curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1; then
+  echo "agent API is unavailable; run scripts/run first" >&2
+  exit 1
+fi
+window_ready=false
+for _ in {1..20}; do
+  if xwininfo -root -tree | grep '"desktop"' >/dev/null; then
+    window_ready=true
+    break
+  fi
+  sleep 0.25
+done
+if [[ "$window_ready" != true ]]; then
+  echo "desktop window is not present on the virtual display" >&2
+  exit 1
+fi
+
+./tests/integration/semantic_agent.sh
+./tests/ui/semantic_smoke.sh
+./scripts/screenshot e2e
+dimensions="$(identify -format '%wx%h' artifacts/screenshots/e2e.png)"
+[[ "$dimensions" == *x* ]] || {
+  echo "GUI screenshot did not contain a valid rendered display" >&2
+  exit 1
+}
+echo "PASS semantic UI smoke test"

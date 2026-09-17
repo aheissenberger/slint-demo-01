@@ -1,0 +1,33 @@
+[workspace]
+members = [
+  "crates/domain",
+  "crates/application",
+  "crates/infrastructure",
+  "crates/desktop",
+  "crates/agent-api",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Copilot"]
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.2", features = ["env-filter", "json"] }
+slint = "1.12"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

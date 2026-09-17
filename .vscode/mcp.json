@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "slint-agent-desktop": {
+      "type": "stdio",
+      "command": "/workspace/scripts/mcp",
+      "cwd": "/workspace",
+      "env": {
+        "AGENT_API_ADDR": "127.0.0.1:8080"
+      }
+    }
+  }
+}

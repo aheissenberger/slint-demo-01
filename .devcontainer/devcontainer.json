@@ -1,0 +1,38 @@
+{
+  "name": "slint-agent-desktop",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "runServices": ["devcontainer"],
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root",
+  "containerUser": "root",
+  "shutdownAction": "stopCompose",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "slint.slint",
+        "vadimcn.vscode-lldb",
+        "ms-vscode.cpptools",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.formatOnSave": true,
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.server.extraEnv": {
+          "RUSTUP_HOME": "/root/.rustup",
+          "CARGO_HOME": "/root/.cargo"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "/workspace/.devcontainer/scripts/post-create.sh",
+  "forwardPorts": [5900, 6080, 8080],
+  "portsAttributes": {
+    "5900": { "label": "VNC display" },
+    "6080": { "label": "noVNC browser" },
+    "8080": { "label": "agent API" }
+  }
+}

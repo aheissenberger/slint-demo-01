@@ -1,0 +1,1 @@
+This repository is intentionally scaffolded to enforce a clean, agent-friendly Rust workspace and a containerized Linux GUI environment.

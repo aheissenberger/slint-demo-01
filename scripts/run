@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DISPLAY=:1
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-dir}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
+if curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1; then
+  echo "Desktop app is already running (agent API: http://127.0.0.1:8080)."
+  echo "View it through noVNC at http://localhost:6080/vnc.html"
+  exit 0
+fi
+
+cargo run -p desktop --bin desktop

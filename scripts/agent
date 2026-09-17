@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_url="${AGENT_API_URL:-http://127.0.0.1:8080}"
+case "${1:-help}" in
+  health) curl --fail --silent "$base_url/health"; echo ;;
+  state) curl --fail --silent "$base_url/agent/state"; echo ;;
+  ui) curl --fail --silent "$base_url/agent/ui"; echo ;;
+  command)
+    command_name="${2:?command name required}"
+    value="${3:-}"
+    payload="$(jq -n --arg command "$command_name" --arg value "$value" \
+      '{command: $command, arguments: {value: $value}}')"
+    curl --fail --silent -H 'Content-Type: application/json' -d "$payload" "$base_url/agent/command"; echo ;;
+  click)
+    curl --fail --silent -H 'Content-Type: application/json' -d "{\"action\":\"click\",\"id\":\"${2:?element id required}\"}" "$base_url/agent/ui/action"; echo ;;
+  set)
+    element_id="${2:?element id required}"
+    value="${3:-}"
+    payload="$(jq -n --arg id "$element_id" --arg value "$value" \
+      '{action: "set_value", id: $id, value: $value}')"
+    curl --fail --silent -H 'Content-Type: application/json' -d "$payload" "$base_url/agent/ui/action"; echo ;;
+  get)
+    curl --fail --silent -H 'Content-Type: application/json' -d "{\"action\":\"get_value\",\"id\":\"${2:?element id required}\"}" "$base_url/agent/ui/action"; echo ;;
+  screenshot) /workspace/scripts/screenshot "${2:-agent}" ;;
+  diagnostics)
+    dir="artifacts/diagnostics"; mkdir -p "$dir"
+    ./scripts/doctor --json > "$dir/environment.json" || true
+    curl --fail --silent "$base_url/health" > "$dir/health.json" || true
+    curl --fail --silent "$base_url/agent/state" > "$dir/state.json" || true
+    curl --fail --silent "$base_url/agent/ui" > "$dir/ui.json" || true
+    ./scripts/agent logs --json > "$dir/logs.json" || true
+    ./scripts/screenshot diagnostics || true
+    cp artifacts/screenshots/diagnostics.png "$dir/screenshot.png" 2>/dev/null || true
+    echo "$dir"
+    ;;
+  logs)
+    if [[ "${2:-}" == "--json" ]]; then
+      jq -n \
+        --rawfile desktop /tmp/desktop.log \
+        --rawfile xvfb /tmp/xvfb.log \
+        --rawfile openbox /tmp/openbox.log \
+        --rawfile x11vnc /tmp/x11vnc.log \
+        --rawfile novnc /tmp/novnc.log \
+        '{desktop: $desktop, xvfb: $xvfb, openbox: $openbox, x11vnc: $x11vnc, novnc: $novnc}'
+    else
+      tail -n 100 /tmp/desktop.log /tmp/xvfb.log /tmp/openbox.log /tmp/x11vnc.log /tmp/novnc.log 2>/dev/null || true
+    fi
+    ;;
+  help|*)
+    echo "Usage: scripts/agent {health|state|ui|command|click|set|get|screenshot|diagnostics|logs [--json]}"
+    ;;
+ esac

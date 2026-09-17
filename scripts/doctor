@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+json=false
+[[ "${1:-}" == "--json" ]] && json=true
+checks=()
+check() {
+  local name="$1"; shift
+  if "$@" >/dev/null 2>&1; then checks+=("{\"name\":\"$name\",\"ok\":true}"); $json || echo "PASS $name"
+  else checks+=("{\"name\":\"$name\",\"ok\":false}"); $json || echo "FAIL $name"; return 1; fi
+}
+fail=0
+check cargo cargo --version || fail=1
+check rustc rustc --version || fail=1
+check rustfmt rustfmt --version || fail=1
+check clippy cargo clippy --version || fail=1
+check rust-analyzer rust-analyzer --version || fail=1
+check ripgrep rg --version || fail=1
+check fd fd --version || fail=1
+check jq jq --version || fail=1
+check tree tree --version || fail=1
+check shellcheck shellcheck --version || fail=1
+check python3 python3 --version || fail=1
+check unzip unzip -v || fail=1
+check slint-build cargo check -p desktop || fail=1
+check slint-validation ./scripts/slint-check || fail=1
+check Xvfb command -v Xvfb || fail=1
+check xdpyinfo command -v xdpyinfo || fail=1
+check openbox command -v openbox || fail=1
+check x11vnc command -v x11vnc || fail=1
+check noVNC command -v websockify || fail=1
+check noVNC-assets test -f /usr/share/novnc/vnc.html || fail=1
+check imagemagick command -v import || fail=1
+if python3 - <<'PY' >/dev/null 2>&1
+import socket
+with socket.create_connection(("127.0.0.1", 5900), timeout=2) as connection:
+    assert connection.recv(12).startswith(b"RFB ")
+PY
+then
+  $json || echo "PASS VNC RFB"
+else
+  $json || echo "WARN VNC RFB is not available (start the desktop stack first)"
+fi
+if curl --fail --silent "${AGENT_API_URL:-http://127.0.0.1:8080}/health" >/dev/null 2>&1; then
+  $json || echo "PASS agent API"
+else
+  $json || echo "WARN agent API is not available (start the desktop app first)"
+fi
+display="${DISPLAY:-:1}"
+if command -v xdpyinfo >/dev/null 2>&1 &&
+  xdpyinfo -display "$display" >/dev/null 2>&1; then
+  $json || echo "PASS DISPLAY=$display"
+else
+  $json || echo "WARN DISPLAY=$display is not available (start the desktop stack first)"
+fi
+if $json; then
+  printf '{"checks":[%s],"ok":%s}\n' "$(IFS=,; echo "${checks[*]}")" "$([[ $fail -eq 0 ]] && echo true || echo false)"
+fi
+exit "$fail"

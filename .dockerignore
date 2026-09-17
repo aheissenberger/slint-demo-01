@@ -1,0 +1,33 @@
+# Build output
+target/
+**/target/
+
+# Version-control metadata
+.git/
+.svn/
+target/
+
+# Local editor and OS files
+.idea/
+.fleet/
+.zed/
+.vscode/settings.json.user
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Local runtime output
+*.log
+artifacts/screenshots/
+artifacts/failures/*
+!artifacts/failures/.gitkeep
+artifacts/diagnostics/*
+!artifacts/diagnostics/.gitkeep
+
+# Local secrets
+.env
+.env.*
+!.env.example
+!.env.template
