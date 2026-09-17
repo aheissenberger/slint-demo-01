@@ -49,7 +49,9 @@ export component FluentButton inherits Rectangle {
 
     focus-scope := FocusScope {
         x: 0;
-        width: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
         enabled: !disabled;
 
         key-pressed(event) => {
@@ -61,6 +63,8 @@ export component FluentButton inherits Rectangle {
         }
 
         touch-area := TouchArea {
+            width: parent.width;
+            height: parent.height;
             enabled: !disabled;
             clicked => { root.clicked(); }
         }
