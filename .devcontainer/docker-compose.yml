@@ -19,6 +19,11 @@ services:
       - cargo-registry:/root/.cargo/registry
       - cargo-git:/root/.cargo/git
       - target-cache:/workspace/target
+      - vscode-extensions:/root/.vscode-server/extensions
+      - vscode-extensions-cache:/root/.vscode-server/extensionsCache
+      - vscode-global-storage:/root/.vscode-server/data/User/globalStorage
+      - vscode-agent-session-data:/root/.vscode-server/data/agentSessionData
+      - copilot-session-state:/root/.copilot/session-state
     ports:
       - "127.0.0.1:5900:5900"
       - "127.0.0.1:6080:6080"
@@ -29,3 +34,8 @@ volumes:
   cargo-registry:
   cargo-git:
   target-cache:
+  vscode-extensions:
+  vscode-extensions-cache:
+  vscode-global-storage:
+  vscode-agent-session-data:
+  copilot-session-state:

@@ -6,6 +6,8 @@ export component FluentButton inherits Rectangle {
     in property <bool> disabled: false;
     in property <bool> destructive: false;
     in property <string> agent-id: "";
+    in property <string> agent-role: "button";
+    in property <string> agent-actions: "click,focus";
     in property <string> variant: "standard";
     callback clicked;
 

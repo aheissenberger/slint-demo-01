@@ -59,11 +59,27 @@ required. Running `./scripts/run` again is safe: it detects the existing
 application and prints the noVNC URL instead of starting a second process on
 port 8080.
 
-If VS Code reports that `/root/.vscode-server/.../node` is missing, recreate
-the DevContainer so the VS Code server is installed afresh. The Compose setup
-intentionally does not persist `/root/.vscode-server`; persisting that directory
-can retain a partial server download and prevent the remote connection from
-starting.
+The Compose setup persists selected VS Code and Copilot state with Docker named
+volumes so extension data and chat sessions survive DevContainer rebuilds. It
+does not persist the entire `/root/.vscode-server` directory because that can
+retain a partial server download or stale runtime state and prevent the remote
+connection from starting after a rebuild. If VS Code reports that
+`/root/.vscode-server/.../node` is missing, recreate the DevContainer so the VS
+Code server binaries are installed afresh while the selected state volumes
+remain intact.
+
+The persisted VS Code paths follow the VS Code Dev Containers recommendation
+for avoiding extension reinstalls: `/root/.vscode-server/extensions`,
+`/root/.vscode-server/extensionsCache`, and
+`/root/.vscode-server/data/User/globalStorage`. The project also persists the
+agent chat directory at `/root/.vscode-server/data/agentSessionData` and the
+minimal Copilot session content directory at `/root/.copilot/session-state`.
+Other Copilot runtime files, logs, plugin installations, caches, and VS Code
+server binaries remain ephemeral.
+
+If a persistent volume itself becomes stale, remove only that named volume from
+Docker Desktop or with `docker volume rm`; do not add a broad mount for
+`/root/.vscode-server` as a workaround.
 
 If noVNC displays “Failed to connect to server”, rebuild the DevContainer so
 the updated x11vnc/websockify configuration is used, then reload

@@ -1,8 +1,8 @@
-use application::{AppService, ApplicationError, ExampleCommand};
+use application::{AppCommand, AppService, AppStateStore, ApplicationError};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use tracing::{info, instrument, trace};
 
@@ -17,9 +17,104 @@ pub struct AgentStateResponse {
 pub struct AgentElement {
     pub id: String,
     pub role: String,
+    pub actions: Vec<String>,
     pub enabled: bool,
     pub value: Option<String>,
     pub accessible_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UiComponentMetadata {
+    pub role: &'static str,
+    pub actions: &'static [&'static str],
+}
+
+const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
+    (
+        "main.input",
+        UiComponentMetadata {
+            role: "textbox",
+            actions: &["get_value", "set_value", "focus"],
+        },
+    ),
+    (
+        "main.submit",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "main.reset",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "main.file-picker",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "get_value", "set_value", "focus"],
+        },
+    ),
+    (
+        "main.selected-file",
+        UiComponentMetadata {
+            role: "status",
+            actions: &["get_value"],
+        },
+    ),
+    (
+        "main.status",
+        UiComponentMetadata {
+            role: "status",
+            actions: &[],
+        },
+    ),
+    (
+        "help.about",
+        UiComponentMetadata {
+            role: "menuitem",
+            actions: &["click"],
+        },
+    ),
+    (
+        "about.dialog",
+        UiComponentMetadata {
+            role: "dialog",
+            actions: &[],
+        },
+    ),
+    (
+        "about.close",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+];
+
+pub fn ui_component_metadata(id: &str) -> Option<UiComponentMetadata> {
+    UI_COMPONENT_METADATA
+        .iter()
+        .find_map(|(candidate, metadata)| (*candidate == id).then_some(*metadata))
+}
+
+fn element(id: &str, enabled: bool, value: Option<String>, label: &str) -> AgentElement {
+    let metadata = ui_component_metadata(id).expect("agent element metadata");
+    AgentElement {
+        id: id.to_string(),
+        role: metadata.role.to_string(),
+        actions: metadata
+            .actions
+            .iter()
+            .map(|action| (*action).to_string())
+            .collect(),
+        enabled,
+        value,
+        accessible_label: Some(label.to_string()),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,129 +153,80 @@ pub struct AgentErrorResponse {
     pub element: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RuntimeState {
-    input: String,
-    development_file_path: String,
-    selected_file: String,
-    status: String,
-    busy: bool,
-    about_open: bool,
-    revision: u64,
-}
-
 #[derive(Clone)]
 pub struct AgentApi<S> {
-    service: AppService<S>,
-    state: Arc<Mutex<RuntimeState>>,
+    store: Arc<AppStateStore<S>>,
 }
 
 impl<S> AgentApi<S>
 where
-    S: application::ExampleRepository + Clone + Send + 'static,
+    S: application::ExampleRepository + Clone + Send + Sync + 'static,
 {
     pub fn new(service: AppService<S>) -> Self {
         Self {
-            service,
-            state: Arc::new(Mutex::new(RuntimeState {
-                input: String::new(),
-                development_file_path: "/workspace/Cargo.toml".to_string(),
-                selected_file: String::new(),
-                status: "bereit".to_string(),
-                busy: false,
-                about_open: false,
-                revision: 0,
-            })),
+            store: Arc::new(AppStateStore::new(service)),
         }
+    }
+
+    pub fn store(&self) -> Arc<AppStateStore<S>> {
+        Arc::clone(&self.store)
     }
 
     #[instrument(name = "agent.get_state", skip(self), fields(component = "agent-api"))]
     pub fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
-        let snapshot = self.service.load_state()?;
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
+        let snapshot = self.store.snapshot()?;
         Ok(AgentStateResponse {
             screen: snapshot.screen,
-            status: state.status.clone(),
-            busy: state.busy,
+            status: snapshot.status,
+            busy: snapshot.busy,
         })
     }
 
     #[instrument(name = "agent.inspect_ui", skip(self), fields(component = "agent-api"))]
     pub fn inspect_ui(&self) -> Result<UiInspectionResponse, ApplicationError> {
-        let _ = self.service.load_state()?;
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
+        let state = self.store.snapshot()?;
         let mut elements = vec![
-            AgentElement {
-                id: "main.input".to_string(),
-                role: "textbox".to_string(),
-                enabled: true,
-                value: Some(state.input.clone()),
-                accessible_label: Some("Haupteingabe".to_string()),
-            },
-            AgentElement {
-                id: "main.submit".to_string(),
-                role: "button".to_string(),
-                enabled: !state.input.trim().is_empty(),
-                value: None,
-                accessible_label: Some("Senden".to_string()),
-            },
-            AgentElement {
-                id: "main.reset".to_string(),
-                role: "button".to_string(),
-                enabled: true,
-                value: None,
-                accessible_label: Some("Zurücksetzen".to_string()),
-            },
-            AgentElement {
-                id: "main.file-picker".to_string(),
-                role: "button".to_string(),
-                enabled: true,
-                value: Some(state.development_file_path.clone()),
-                accessible_label: Some("Datei auswählen".to_string()),
-            },
-            AgentElement {
-                id: "main.selected-file".to_string(),
-                role: "status".to_string(),
-                enabled: true,
-                value: Some(state.selected_file.clone()),
-                accessible_label: Some("Ausgewählter Dateipfad".to_string()),
-            },
-            AgentElement {
-                id: "main.status".to_string(),
-                role: "status".to_string(),
-                enabled: true,
-                value: Some(state.status.clone()),
-                accessible_label: Some("Anwendungsstatus".to_string()),
-            },
-            AgentElement {
-                id: "help.about".to_string(),
-                role: "menuitem".to_string(),
-                enabled: true,
-                value: None,
-                accessible_label: Some("Über".to_string()),
-            },
+            element(
+                "main.input",
+                true,
+                Some(state.input.clone()),
+                "Haupteingabe",
+            ),
+            element(
+                "main.submit",
+                !state.input.trim().is_empty() && !state.busy,
+                None,
+                "Senden",
+            ),
+            element("main.reset", true, None, "Zurücksetzen"),
+            element(
+                "main.file-picker",
+                true,
+                Some(state.development_file_path.clone()),
+                "Datei auswählen",
+            ),
+            element(
+                "main.selected-file",
+                true,
+                Some(state.selected_file.clone()),
+                "Ausgewählter Dateipfad",
+            ),
+            element(
+                "main.status",
+                true,
+                Some(state.status.clone()),
+                "Anwendungsstatus",
+            ),
+            element("help.about", true, None, "Über"),
         ];
         if state.about_open {
-            elements.push(AgentElement {
-                id: "about.dialog".to_string(),
-                role: "dialog".to_string(),
-                enabled: true,
-                value: None,
-                accessible_label: Some("Über Slint Agent Desktop".to_string()),
-            });
-            elements.push(AgentElement {
-                id: "about.close".to_string(),
-                role: "button".to_string(),
-                enabled: true,
-                value: None,
-                accessible_label: Some("Schließen".to_string()),
-            });
+            elements.push(element(
+                "about.dialog",
+                true,
+                None,
+                "Über Slint Agent Desktop",
+            ));
+            elements.push(element("about.close", true, None, "Schließen"));
         }
 
         Ok(UiInspectionResponse {
@@ -190,11 +236,7 @@ where
     }
 
     pub fn revision(&self) -> Result<u64, ApplicationError> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
-        Ok(state.revision)
+        Ok(self.store.snapshot()?.revision)
     }
 
     #[instrument(
@@ -207,34 +249,39 @@ where
         request: AgentCommandRequest,
     ) -> Result<String, ApplicationError> {
         trace!(command = %request.command, "received command");
-        let value = request
-            .arguments
-            .get("value")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default();
-        let value = self.service.validate_input(value)?;
-        {
-            let mut state = self
-                .state
-                .lock()
-                .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
-            state.busy = true;
-            state.status = "wird ausgeführt".to_string();
-        }
-        let result = self.service.execute_command(ExampleCommand {
-            command: request.command,
-            arguments: serde_json::json!({ "value": value }),
-        });
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?;
-        state.busy = false;
-        match &result {
-            Ok(_) => state.status = "erfolgreich".to_string(),
-            Err(_) => state.status = "Fehler".to_string(),
-        }
-        result
+        let command = match request.command.as_str() {
+            "submit" => AppCommand::Submit,
+            "reset" => AppCommand::Reset,
+            "open_about" => AppCommand::OpenAbout,
+            "close_about" => AppCommand::CloseAbout,
+            "select_development_file" => AppCommand::SelectDevelopmentFile,
+            "set_input" => {
+                let value = request
+                    .arguments
+                    .get("value")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_default();
+                AppCommand::SetInput(value)
+            }
+            "set_development_file_path" => {
+                let value = request
+                    .arguments
+                    .get("path")
+                    .or_else(|| request.arguments.get("value"))
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_default();
+                AppCommand::SetDevelopmentFilePath(value)
+            }
+            _ => {
+                return Err(ApplicationError::InvalidPayload(format!(
+                    "nicht unterstützter Befehl: {}",
+                    request.command
+                )))
+            }
+        };
+        Ok(self.store.dispatch(command)?.message)
     }
 
     #[instrument(
@@ -248,110 +295,38 @@ where
     ) -> Result<String, ApplicationError> {
         match action.action.as_str() {
             "click" if action.id == "main.submit" => {
-                let value = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
-                    .input
-                    .clone();
-                self.execute_command(AgentCommandRequest {
-                    command: "submit".into(),
-                    arguments: serde_json::json!({ "value": value }),
-                })
+                Ok(self.store.dispatch(AppCommand::Submit)?.message)
             }
-            "set_value" if action.id == "main.input" => {
-                let value = action.value.unwrap_or_default();
-                if value.len() > 4096 {
-                    return Err(ApplicationError::InvalidPayload(
-                        "Eingabe überschreitet 4096 Zeichen".into(),
-                    ));
-                }
-                let mut state = self.state.lock().map_err(|_| {
-                    ApplicationError::Repository("Zustandssperre beschädigt".into())
-                })?;
-                state.input = value;
-                state.revision = state.revision.wrapping_add(1);
-                Ok("Wert aktualisiert".into())
-            }
+            "set_value" if action.id == "main.input" => Ok(self
+                .store
+                .dispatch(AppCommand::SetInput(action.value.unwrap_or_default()))?
+                .message),
             "click" if action.id == "main.reset" => {
-                let mut state = self.state.lock().map_err(|_| {
-                    ApplicationError::Repository("Zustandssperre beschädigt".into())
-                })?;
-                state.input.clear();
-                state.status = "bereit".into();
-                state.revision = state.revision.wrapping_add(1);
-                Ok("zurückgesetzt".into())
+                Ok(self.store.dispatch(AppCommand::Reset)?.message)
             }
-            "set_value" if action.id == "main.file-picker" => {
-                let value = action.value.unwrap_or_default();
-                if value.trim().is_empty() {
-                    return Err(ApplicationError::InvalidPayload(
-                        "Entwicklungsdateipfad darf nicht leer sein".into(),
-                    ));
-                }
-                if value.len() > 4096 {
-                    return Err(ApplicationError::InvalidPayload(
-                        "Entwicklungsdateipfad überschreitet 4096 Zeichen".into(),
-                    ));
-                }
-                let mut state = self.state.lock().map_err(|_| {
-                    ApplicationError::Repository("Zustandssperre beschädigt".into())
-                })?;
-                state.development_file_path = value;
-                state.revision = state.revision.wrapping_add(1);
-                Ok("Entwicklungsdateipfad aktualisiert".into())
-            }
-            "click" if action.id == "main.file-picker" => {
-                let mut state = self.state.lock().map_err(|_| {
-                    ApplicationError::Repository("Zustandssperre beschädigt".into())
-                })?;
-                state.selected_file = state.development_file_path.clone();
-                state.revision = state.revision.wrapping_add(1);
-                Ok("Datei ausgewählt".into())
-            }
+            "set_value" if action.id == "main.file-picker" => Ok(self
+                .store
+                .dispatch(AppCommand::SetDevelopmentFilePath(
+                    action.value.unwrap_or_default(),
+                ))?
+                .message),
+            "click" if action.id == "main.file-picker" => Ok(self
+                .store
+                .dispatch(AppCommand::SelectDevelopmentFile)?
+                .message),
             "get_value" if action.id == "main.file-picker" => {
-                let value = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
-                    .development_file_path
-                    .clone();
-                Ok(value)
+                Ok(self.store.snapshot()?.development_file_path)
             }
             "get_value" if action.id == "main.selected-file" => {
-                let value = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
-                    .selected_file
-                    .clone();
-                Ok(value)
+                Ok(self.store.snapshot()?.selected_file)
             }
             "click" if action.id == "help.about" => {
-                let mut state = self.state.lock().map_err(|_| {
-                    ApplicationError::Repository("Zustandssperre beschädigt".into())
-                })?;
-                state.about_open = true;
-                state.revision = state.revision.wrapping_add(1);
-                Ok("Info-Dialog geöffnet".into())
+                Ok(self.store.dispatch(AppCommand::OpenAbout)?.message)
             }
             "click" if action.id == "about.close" => {
-                let mut state = self.state.lock().map_err(|_| {
-                    ApplicationError::Repository("Zustandssperre beschädigt".into())
-                })?;
-                state.about_open = false;
-                state.revision = state.revision.wrapping_add(1);
-                Ok("Info-Dialog geschlossen".into())
+                Ok(self.store.dispatch(AppCommand::CloseAbout)?.message)
             }
-            "get_value" if action.id == "main.input" => {
-                let value = self
-                    .state
-                    .lock()
-                    .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))?
-                    .input
-                    .clone();
-                Ok(value)
-            }
+            "get_value" if action.id == "main.input" => Ok(self.store.snapshot()?.input),
             "focus"
                 if action.id == "main.input"
                     || action.id == "main.submit"
@@ -388,7 +363,7 @@ where
 
 impl<S> AgentService for AgentApi<S>
 where
-    S: application::ExampleRepository + Clone + Send + 'static,
+    S: application::ExampleRepository + Clone + Send + Sync + 'static,
 {
     fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
         AgentApi::get_state(self)

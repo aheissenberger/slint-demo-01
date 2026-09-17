@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Cross-check agent-id coverage between the Slint UI and crates/agent-api.
+"""Cross-check semantic metadata between the Slint UI and crates/agent-api.
 
 The slint-contract helper first compiles the UI entry point with the official
-Slint interpreter and then scans the source-level agent-id declarations. This
-keeps the Slint files as the contract while avoiding a regex-only UI parser.
-Every UI id must have a matching agent-api semantic entry.
+Slint interpreter and emits structured source-level contract JSON. Every UI id,
+role, and action set must have a matching agent-api semantic entry. Duplicate
+concrete IDs are rejected by the Rust helper before this comparison.
 
 Two kinds of UI declarations are recognized:
-  - `agent-id: "screen.element";`   — the custom property carried by reusable
-    components (FluentButton, FluentTextField, ...).
-  - `// agent-id: "screen.element"` — a comment marker placed directly above
-    a built-in element (MenuItem, Text, PopupWindow, ...) that cannot carry a
-    custom property of its own.
+  - `agent-id`, `agent-role`, and `agent-actions` properties on reusable
+    component instances.
+  - matching `// agent-*` comment markers directly above built-ins that cannot
+    carry custom properties.
 """
 
+import json
 import re
 import subprocess
 import sys
@@ -24,14 +24,22 @@ UI_DIR = REPO_ROOT / "ui"
 AGENT_API_DIR = REPO_ROOT / "crates" / "agent-api" / "src"
 
 RUST_ELEMENT_ID_RE = re.compile(r'\bid:\s*"([^"]+)"\.to_string\(\)')
+RUST_ELEMENT_FACTORY_ID_RE = re.compile(r'\belement\(\s*"([^"]+)"')
 RUST_ACTION_ID_RE = re.compile(r'action\.id\s*==\s*"([^"]+)"')
+RUST_METADATA_RE = re.compile(
+    r'\(\s*"([^"]+)"\s*,\s*UiComponentMetadata\s*\{\s*'
+    r'role:\s*"([^"]+)"\s*,\s*actions:\s*&\[(.*?)\]\s*,?\s*\}\s*,?\s*\)',
+    re.DOTALL,
+)
+RUST_STRING_RE = re.compile(r'"([^"]+)"')
 
 
 def find_ids(pattern: re.Pattern, path: Path) -> dict[str, list[tuple[Path, int]]]:
     found: dict[str, list[tuple[Path, int]]] = {}
-    for line_no, line in enumerate(path.read_text().splitlines(), start=1):
-        for match in pattern.finditer(line):
-            found.setdefault(match.group(1), []).append((path, line_no))
+    source = path.read_text()
+    for match in pattern.finditer(source):
+        line_no = source.count("\n", 0, match.start()) + 1
+        found.setdefault(match.group(1), []).append((path, line_no))
     return found
 
 
@@ -49,6 +57,15 @@ def relative(path: Path) -> str:
 
 def format_locations(locations: list[tuple[Path, int]]) -> str:
     return ", ".join(f"{relative(path)}:{line}" for path, line in locations)
+
+def find_metadata(path: Path) -> dict[str, tuple[str, list[str], tuple[Path, int]]]:
+    source = path.read_text()
+    found: dict[str, tuple[str, list[str], tuple[Path, int]]] = {}
+    for match in RUST_METADATA_RE.finditer(source):
+        element_id, role, action_source = match.groups()
+        line = source.count("\n", 0, match.start()) + 1
+        found[element_id] = (role, RUST_STRING_RE.findall(action_source), (path, line))
+    return found
 
 
 def main() -> int:
@@ -68,10 +85,25 @@ def main() -> int:
     if contract.returncode != 0:
         print(contract.stderr, file=sys.stderr, end="")
         return contract.returncode
-    ui_ids = {line: [] for line in contract.stdout.splitlines() if line}
-    element_ids = merge(*(find_ids(RUST_ELEMENT_ID_RE, f) for f in rust_files))
+    try:
+        contract_json = json.loads(contract.stdout)
+    except json.JSONDecodeError as error:
+        print(f"error: invalid slint-contract JSON: {error}", file=sys.stderr)
+        return 2
+    ui_elements = {element["id"]: element for element in contract_json["elements"]}
+    ui_ids = {
+        element_id: [(Path(element["path"]), element["line"])]
+        for element_id, element in ui_elements.items()
+    }
+    element_ids = merge(
+        *(find_ids(RUST_ELEMENT_ID_RE, f) for f in rust_files),
+        *(find_ids(RUST_ELEMENT_FACTORY_ID_RE, f) for f in rust_files),
+    )
     action_ids = merge(*(find_ids(RUST_ACTION_ID_RE, f) for f in rust_files))
     agent_api_ids = merge(element_ids, action_ids)
+    rust_metadata: dict[str, tuple[str, list[str], tuple[Path, int]]] = {}
+    for rust_file in rust_files:
+        rust_metadata.update(find_metadata(rust_file))
 
     errors: list[str] = []
 
@@ -90,6 +122,33 @@ def main() -> int:
                 "under ui/ — remove the dead entry or add the UI marker"
             )
 
+    for agent_id, element in sorted(ui_elements.items()):
+        metadata = rust_metadata.get(agent_id)
+        location = format_locations(ui_ids[agent_id])
+        if metadata is None:
+            errors.append(
+                f'"{agent_id}" at {location} has no UiComponentMetadata entry'
+            )
+            continue
+        role, actions, rust_location = metadata
+        if role != element["role"]:
+            errors.append(
+                f'"{agent_id}" role differs: UI declares "{element["role"]}" at '
+                f'{location}, Rust declares "{role}" at {format_locations([rust_location])}'
+            )
+        if actions != element["actions"]:
+            errors.append(
+                f'"{agent_id}" actions differ: UI declares {element["actions"]} at '
+                f'{location}, Rust declares {actions} at {format_locations([rust_location])}'
+            )
+
+    for agent_id, (_, _, location) in sorted(rust_metadata.items()):
+        if agent_id not in ui_elements:
+            errors.append(
+                f'"{agent_id}" metadata at {format_locations([location])} has no '
+                "matching Slint declaration"
+            )
+
     if errors:
         print("agent-api coverage check failed:\n", file=sys.stderr)
         for error in errors:
@@ -104,7 +163,8 @@ def main() -> int:
     print(
         f"agent-api coverage check passed: {len(ui_ids)} UI agent-id(s) all have "
         f"matching inspect_ui elements ({len(element_ids)} total), "
-        f"{len(action_ids)} action handler(s) all trace to a real UI element."
+        f"{len(action_ids)} action handler(s) all trace to a real UI element, "
+        "and role/action metadata matches."
     )
     return 0
 

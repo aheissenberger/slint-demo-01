@@ -35,6 +35,8 @@ export component MainWindow inherits Window {
         Menu {
             title: "Hilfe";
             // agent-id: "help.about"
+            // agent-role: "menuitem"
+            // agent-actions: "click"
             // `MenuItem` has no `agent-id` property; this marker keeps the
             // agent-api coverage check (scripts/agent-api-check) in sync with
             // crates/agent-api's "help.about" element.
@@ -48,6 +50,8 @@ export component MainWindow inherits Window {
     }
 
     // agent-id: "about.dialog"
+    // agent-role: "dialog"
+    // agent-actions: ""
     // `PopupWindow` has no `agent-id` property; this marker keeps the
     // agent-api coverage check (scripts/agent-api-check) in sync with
     // crates/agent-api's "about.dialog" element.
@@ -155,6 +159,8 @@ export component MainWindow inherits Window {
             }
 
             // agent-id: "main.status"
+            // agent-role: "status"
+            // agent-actions: ""
             // Plain `Text` has no `agent-id` property; this marker keeps the
             // agent-api coverage check (scripts/agent-api-check) in sync with
             // crates/agent-api's "main.status" element.
@@ -173,6 +179,8 @@ export component MainWindow inherits Window {
                 placeholder: "Wert eingeben";
                 value <=> root.input-value;
                 agent-id: "main.input";
+                agent-role: "textbox";
+                agent-actions: "get_value,set_value,focus";
                 label-for-accessibility: "Haupteingabe";
                 edited(value) => {
                     root.input-changed(value);
@@ -182,12 +190,16 @@ export component MainWindow inherits Window {
             FluentButton {
                 label: "Datei auswählen";
                 agent-id: "main.file-picker";
+                agent-role: "button";
+                agent-actions: "click,get_value,set_value,focus";
                 clicked => {
                     root.pick-file();
                 }
             }
 
             // agent-id: "main.selected-file"
+            // agent-role: "status"
+            // agent-actions: "get_value"
             // Plain `Text` has no `agent-id` property; this marker keeps the
             // agent-api coverage check in sync with the selected path output.
             Text {
@@ -210,6 +222,8 @@ export component MainWindow inherits Window {
                 FluentButton {
                     label: "Zurücksetzen";
                     agent-id: "main.reset";
+                    agent-role: "button";
+                    agent-actions: "click,focus";
                     clicked => {
                         root.input-value = "";
                         root.reset();
@@ -221,6 +235,8 @@ export component MainWindow inherits Window {
                     primary: true;
                     disabled: root.input-value == "";
                     agent-id: "main.submit";
+                    agent-role: "button";
+                    agent-actions: "click,focus";
                     clicked => {
                         root.submit(root.input-value);
                     }

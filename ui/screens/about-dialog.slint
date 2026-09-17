@@ -76,6 +76,8 @@ export component AboutDialog inherits Rectangle {
                 label: "Schließen";
                 primary: true;
                 agent-id: "about.close";
+                agent-role: "button";
+                agent-actions: "click,focus";
                 clicked => {
                     root.close-requested();
                 }

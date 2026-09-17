@@ -1,8 +1,19 @@
-use agent_api::{AgentActionRequest, AgentApi, AgentCommandRequest};
+use agent_api::{ui_component_metadata, AgentActionRequest, AgentApi, AgentCommandRequest};
 use infrastructure::MemoryRepository;
 
 fn api() -> AgentApi<MemoryRepository> {
     AgentApi::new(MemoryRepository::with_default_settings().build_service())
+}
+
+#[test]
+fn component_metadata_defines_the_exposed_capabilities() {
+    let input = ui_component_metadata("main.input").expect("input metadata");
+    assert_eq!(input.role, "textbox");
+    assert_eq!(input.actions, ["get_value", "set_value", "focus"]);
+
+    let submit = ui_component_metadata("main.submit").expect("submit metadata");
+    assert_eq!(submit.role, "button");
+    assert_eq!(submit.actions, ["click", "focus"]);
 }
 
 #[test]
@@ -123,4 +134,43 @@ fn development_file_picker_path_is_configurable_and_selected_on_click() {
         selected_file.value.as_deref(),
         Some("/tmp/agent-selected.txt")
     );
+}
+
+#[test]
+fn command_api_supports_the_same_transitions_as_the_ui_actions() {
+    let api = api();
+
+    api.execute_command(AgentCommandRequest {
+        command: "set_input".into(),
+        arguments: serde_json::json!({ "value": "API command" }),
+    })
+    .expect("set input via application command");
+
+    let state = api.get_state().expect("state after API command");
+    assert_eq!(state.status, "bereit");
+    assert!(!state.busy);
+
+    api.execute_command(AgentCommandRequest {
+        command: "open_about".into(),
+        arguments: serde_json::Value::Null,
+    })
+    .expect("open about dialog via application command");
+
+    let opened = api
+        .inspect_ui()
+        .expect("inspection after opening about via command");
+    assert!(opened
+        .elements
+        .iter()
+        .any(|element| element.id == "about.dialog"));
+
+    api.execute_command(AgentCommandRequest {
+        command: "reset".into(),
+        arguments: serde_json::Value::Null,
+    })
+    .expect("reset via application command");
+
+    let reset = api.get_state().expect("state after reset");
+    assert_eq!(reset.status, "bereit");
+    assert!(!reset.busy);
 }

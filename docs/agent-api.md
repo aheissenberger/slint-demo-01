@@ -106,10 +106,45 @@ method not found, `-32602` invalid parameters, and `-32603` internal error).
 JSON-producing tools also include `structuredContent` alongside their readable
 text content.
 
-The desktop adapter synchronizes semantic agent actions back into the visible
-Slint window on the UI event loop. This means `set_value`, `click`, and
-application commands can be followed by visual verification without creating a
-second UI state.
+The desktop adapter subscribes to application snapshots and forwards each
+update directly to Slint with `upgrade_in_event_loop`, which wakes the UI event
+loop. There is no synchronization polling timer. This means `set_value`,
+`click`, and application commands can be followed by visual verification
+without creating a second UI state.
+
+## Shared application state and component metadata
+
+The application store in `crates/application` is the single source of truth
+for state used by both the rendered Slint window and the agent API. Human UI
+callbacks and agent actions are translated into the same typed
+`AppCommand` values. The store publishes snapshots to the Slint adapter, so
+the agent API no longer owns a duplicate UI state or relies on inspecting its
+own state to synchronize the window. No-op transitions do not increment the
+revision or publish another snapshot, preventing feedback when a rendered
+popup reports its already-current visibility back to the store.
+
+The agent-facing state is intentionally in-memory only: it resets to defaults on
+restart and is not persisted to disk. This keeps the dev-only automation surface
+predictable while still letting the UI and agent API share the same live state.
+
+Reusable components declare their agent-facing capabilities explicitly through
+Slint properties, and the agent adapter keeps the corresponding stable
+semantic metadata registry:
+
+```slint
+in property <string> agent-id: "";
+in property <string> agent-role: "button";
+in property <string> agent-actions: "click,focus";
+```
+
+`agent-id` is assigned at the screen instance, not fixed by the reusable
+component. `agent-role` and `agent-actions` describe the component contract;
+the runtime `inspect_ui` response supplies current values, enabled state, and
+visibility. The registry is covered by semantic contract tests and is used to
+build `AgentElement` responses, rather than repeating roles and actions in
+each runtime element literal. This keeps static component metadata separate
+from dynamic application state and avoids duplicate IDs when a component is
+reused.
 
 ## Example state
 ```json
@@ -154,9 +189,10 @@ Every element id used above traces back to an `agent-id` declared in
 (`FluentButton`, `FluentTextField`) or a `// agent-id: "screen.element"`
 comment marker directly above a built-in element that cannot carry a custom
 property (`MenuItem`, `Text`, `PopupWindow`). `./scripts/agent-api-check`
-(part of `./scripts/check`) statically parses both sides and fails the build
-if a UI `agent-id` has no matching `inspect_ui` element, or if `agent-api`
-references an id no longer declared in the UI. This keeps the semantic
-contract accurate without requiring runtime introspection of Slint's internal
-AccessKit accessibility tree, which is not part of the stable public `slint`
-crate API.
+(part of `./scripts/check`) compiles the UI, extracts structured JSON containing
+each id, role, action set, declaration kind, path, and line, and fails on
+duplicate concrete ids. It then compares those declarations with
+`inspect_ui`, action handlers, and the Rust component metadata registry.
+This keeps the semantic contract accurate without requiring runtime
+introspection of Slint's internal AccessKit accessibility tree, which is not
+part of the stable public `slint` crate API.

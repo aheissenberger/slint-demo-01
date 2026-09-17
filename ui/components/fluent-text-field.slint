@@ -7,6 +7,8 @@ export component FluentTextField inherits Rectangle {
     in property <bool> disabled: false;
     in property <bool> invalid: false;
     in property <string> agent-id: "";
+    in property <string> agent-role: "textbox";
+    in property <string> agent-actions: "get_value,set_value,focus";
     in property <string> label-for-accessibility: "";
     callback edited(string);
 

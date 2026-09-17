@@ -4141,6 +4141,8 @@ dependencies = [
 name = "slint-contract"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "slint-interpreter",
  "spin_on",
 ]
