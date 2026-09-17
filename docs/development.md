@@ -82,8 +82,8 @@ hand-edited to add the Start Menu shortcut) and the MIT license text in
 `crates/slint-demo/wix/License.rtf` was generated from the workspace
 `license` field. Regenerate the license file with
 `cargo wix init --force -p slint-demo` if the license text changes; re-apply
-the Start Menu shortcut edit afterward since `init --force` overwrites
-`main.wxs`.
+the Start Menu shortcut edit and the `$(sys.SOURCEFILEDIR)License.rtf` source
+paths afterward since `init --force` overwrites `main.wxs`.
 Run it manually from the Actions tab, or let it run on pushes to `main` and
 pull requests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; update that file and the

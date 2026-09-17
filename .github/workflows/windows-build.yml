@@ -42,25 +42,35 @@ jobs:
           path: target/release/slint-demo.exe
           if-no-files-found: error
 
-      - name: Install WiX Toolset
-        run: choco install wixtoolset --no-progress -y
-
-      - name: Add WiX Toolset to PATH
+      - name: Ensure WiX Toolset is available
         shell: pwsh
         run: |
-          $wixBin = Get-ChildItem 'C:\Program Files (x86)\WiX Toolset v*\bin' -Directory -ErrorAction Stop |
+          $wixBin = Get-ChildItem 'C:\Program Files (x86)\WiX Toolset v*\bin' -Directory -ErrorAction SilentlyContinue |
             Sort-Object Name -Descending | Select-Object -First 1
           if (-not $wixBin) {
-            throw "WiX Toolset bin folder not found after installation."
+            choco install wixtoolset --no-progress -y
+            if ($LASTEXITCODE -ne 0) {
+              throw "WiX Toolset installation failed with exit code $LASTEXITCODE."
+            }
+            $wixBin = Get-ChildItem 'C:\Program Files (x86)\WiX Toolset v*\bin' -Directory -ErrorAction Stop |
+              Sort-Object Name -Descending | Select-Object -First 1
           }
           Write-Host "Using WiX Toolset bin folder: $($wixBin.FullName)"
           $wixBin.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Install cargo-wix
-        run: cargo install cargo-wix --locked
+      - name: Ensure cargo-wix is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo-wix -ErrorAction SilentlyContinue)) {
+            cargo +1.98.1 install cargo-wix --locked
+            if ($LASTEXITCODE -ne 0) {
+              throw "cargo-wix installation failed with exit code $LASTEXITCODE."
+            }
+          }
+          cargo wix --version
 
       - name: Build Windows installer (MSI)
-        run: cargo wix --no-build --package slint-demo --nocapture --output target/wix/slint-demo.msi
+        run: cargo wix --package slint-demo --nocapture --output target/wix/slint-demo.msi
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v7
