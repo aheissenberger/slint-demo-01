@@ -1,6 +1,6 @@
 #[cfg(feature = "agent-api")]
 use agent_api::AgentApi;
-use application::{AppAction, AppState};
+use application::{AppAction, AppEffect, AppState, StateUpdate};
 use infrastructure::initialize_repository;
 use slint::ComponentHandle;
 use slint::SharedString;
@@ -16,23 +16,17 @@ fn apply_state(ui: &MainWindow, state: AppState) {
     ui.set_status(status.into());
     ui.set_submit_enabled(state.can_submit());
     if ui.get_input_value().as_str() != state.input {
-        ui.set_input_value(state.input.into());
+        ui.set_input_value(state.input.clone().into());
     }
     if ui.get_selected_file().as_str() != state.selected_file {
-        ui.set_selected_file(state.selected_file.into());
+        ui.set_selected_file(state.selected_file.clone().into());
     }
-    if ui.get_about_visible() != state.about_open {
-        if state.about_open {
+    if ui.get_about_visible() != state.is_about_open() {
+        if state.is_about_open() {
             ui.invoke_show_about();
         } else {
             ui.invoke_hide_about();
         }
-    }
-    if state.file_picker_requested {
-        ui.invoke_show_native_file_picker();
-    }
-    if let Some(element_id) = state.focused_element {
-        ui.invoke_focus_control(element_id.into());
     }
 }
 
@@ -96,15 +90,25 @@ impl DesktopApp {
         Self::configure_native_file_picker(ui, &store);
         Self::configure_about(ui, &store);
         Self::configure_submit(ui, &store);
-        Self::configure_focus(ui, &store);
     }
 
-    fn start_state_sync(ui: &MainWindow, updates: std::sync::mpsc::Receiver<AppState>) {
+    fn start_state_sync(ui: &MainWindow, updates: std::sync::mpsc::Receiver<StateUpdate>) {
         let weak = ui.as_weak();
         thread::spawn(move || {
-            while let Ok(state) = updates.recv() {
+            while let Ok(update) = updates.recv() {
                 if weak
-                    .upgrade_in_event_loop(move |ui| apply_state(&ui, state))
+                    .upgrade_in_event_loop(move |ui| {
+                        apply_state(&ui, update.state);
+                        match update.effect {
+                            Some(AppEffect::Focus { element_id }) => {
+                                ui.invoke_focus_control(element_id.into());
+                            }
+                            Some(AppEffect::OpenNativeFilePicker) => {
+                                ui.invoke_show_native_file_picker();
+                            }
+                            None => {}
+                        }
+                    })
                     .is_err()
                 {
                     break;
@@ -165,18 +169,6 @@ impl DesktopApp {
             let _ = value;
             if let Err(error) = store.submit() {
                 tracing::error!(%error, "failed to submit value");
-            }
-        });
-    }
-
-    fn configure_focus(
-        ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
-    ) {
-        let store = Arc::clone(store);
-        ui.on_focus_applied(move || {
-            if let Err(error) = store.dispatch(AppAction::ClearFocus) {
-                tracing::error!(%error, "failed to clear focus request");
             }
         });
     }

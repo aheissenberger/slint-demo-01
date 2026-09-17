@@ -1,9 +1,10 @@
 use application::{AppAction, AppService, AppStateStore, ApplicationError};
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 use tracing::{info, instrument, trace};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,7 +180,7 @@ where
     pub fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
         let state = self.store.current_state()?;
         Ok(AgentStateResponse {
-            screen: state.screen.to_string(),
+            screen: state.screen().to_string(),
             status: state.status.to_string(),
             busy: state.busy,
             error: state.error_message,
@@ -189,7 +190,7 @@ where
     #[instrument(name = "agent.inspect_ui", skip(self), fields(component = "agent-api"))]
     pub fn inspect_ui(&self) -> Result<UiInspectionResponse, ApplicationError> {
         let state = self.store.current_state()?;
-        let main_controls_enabled = !state.about_open;
+        let main_controls_enabled = !state.is_about_open();
         let mut elements = vec![
             element(
                 "main.input",
@@ -227,7 +228,7 @@ where
             ),
             element("help.about", main_controls_enabled, None, "Über"),
         ];
-        if state.about_open {
+        if state.is_about_open() {
             elements.push(element(
                 "about.dialog",
                 true,
@@ -238,7 +239,7 @@ where
         }
 
         Ok(UiInspectionResponse {
-            screen: state.screen.to_string(),
+            screen: state.screen().to_string(),
             elements,
         })
     }
@@ -362,7 +363,7 @@ where
         }
 
         let state = self.store.current_state()?;
-        if state.about_open
+        if state.is_about_open()
             && matches!(
                 action.id.as_str(),
                 "main.input" | "main.submit" | "main.reset" | "main.file-picker" | "help.about"
@@ -373,7 +374,7 @@ where
                 action.id
             )));
         }
-        if action.id == "about.close" && !state.about_open {
+        if action.id == "about.close" && !state.is_about_open() {
             return Err(ApplicationError::InvalidPayload(
                 "Element ist nicht sichtbar: about.close".into(),
             ));
@@ -435,17 +436,40 @@ where
     }
 }
 
-fn handle_connection(mut stream: TcpStream, api: &impl AgentService) -> std::io::Result<()> {
-    let mut buffer = [0_u8; 16 * 1024];
-    let size = stream.read(&mut buffer)?;
-    let request = String::from_utf8_lossy(&buffer[..size]);
-    let mut lines = request.lines();
-    let request_line = lines.next().unwrap_or_default();
-    let body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().unwrap_or_default();
-    let path = parts.next().unwrap_or_default();
-    let response = match (method, path) {
+const MAX_HEADER_BYTES: usize = 8 * 1024;
+const MAX_BODY_BYTES: usize = 8 * 1024;
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
+
+struct HttpRequest {
+    method: String,
+    path: String,
+    body: String,
+}
+
+fn handle_connection(stream: TcpStream, api: &impl AgentService) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(CONNECTION_TIMEOUT))?;
+    stream.set_write_timeout(Some(CONNECTION_TIMEOUT))?;
+    let mut reader = BufReader::new(stream);
+    let response = match read_request(&mut reader) {
+        Ok(request) => dispatch_request(&request, api),
+        Err(HttpRequestError::BadRequest(message)) => json_response(
+            400,
+            &serde_json::json!({"error":{"code":"invalid_request","message":message}}),
+        ),
+        Err(HttpRequestError::PayloadTooLarge) => json_response(
+            413,
+            &serde_json::json!({"error":{"code":"payload_too_large","message":"Anfrage ist zu groß"}}),
+        ),
+        Err(HttpRequestError::Io(error)) => return Err(error),
+    };
+    reader.get_mut().write_all(response.as_bytes())
+}
+
+fn dispatch_request(request: &HttpRequest, api: &impl AgentService) -> String {
+    let method = request.method.as_str();
+    let path = request.path.as_str();
+    let body = request.body.as_str();
+    match (method, path) {
         ("GET", "/health") => json_response(200, &serde_json::json!({"status":"ok"})),
         ("GET", "/agent/state") => json_result(api.get_state()),
         ("GET", "/agent/ui") => json_result(api.inspect_ui()),
@@ -460,8 +484,75 @@ fn handle_connection(mut stream: TcpStream, api: &impl AgentService) -> std::io:
             .map(|result| serde_json::json!({"result": result}))
             .map_or_else(error_response, |body| json_response(200, &body)),
         _ => json_response(404, &serde_json::json!({"error":"not_found"})),
+    }
+}
+
+#[derive(Debug)]
+enum HttpRequestError {
+    BadRequest(&'static str),
+    PayloadTooLarge,
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for HttpRequestError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+fn read_request(reader: &mut impl BufRead) -> Result<HttpRequest, HttpRequestError> {
+    let mut request_line = String::new();
+    let request_line_bytes = reader.read_line(&mut request_line)?;
+    if request_line_bytes == 0 {
+        return Err(HttpRequestError::BadRequest("Anfrage fehlt"));
+    }
+    if request_line_bytes > MAX_HEADER_BYTES {
+        return Err(HttpRequestError::PayloadTooLarge);
+    }
+
+    let mut parts = request_line.split_whitespace();
+    let (Some(method), Some(path), Some(_version), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(HttpRequestError::BadRequest("Ungültige Anfragezeile"));
     };
-    stream.write_all(response.as_bytes())
+
+    let mut header_bytes = request_line_bytes;
+    let mut content_length = 0;
+    loop {
+        let mut header = String::new();
+        let bytes = reader.read_line(&mut header)?;
+        if bytes == 0 {
+            return Err(HttpRequestError::BadRequest("Unvollständige Anfrage"));
+        }
+        header_bytes += bytes;
+        if header_bytes > MAX_HEADER_BYTES {
+            return Err(HttpRequestError::PayloadTooLarge);
+        }
+        if header == "\r\n" {
+            break;
+        }
+        if let Some((name, value)) = header.split_once(':') {
+            if name.eq_ignore_ascii_case("Content-Length") {
+                content_length = value
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| HttpRequestError::BadRequest("Ungültige Content-Length"))?;
+            }
+        }
+    }
+    if content_length > MAX_BODY_BYTES {
+        return Err(HttpRequestError::PayloadTooLarge);
+    }
+    let mut body = vec![0; content_length];
+    reader.read_exact(&mut body)?;
+    let body = String::from_utf8(body)
+        .map_err(|_| HttpRequestError::BadRequest("Anfragetext ist nicht UTF-8"))?;
+    Ok(HttpRequest {
+        method: method.to_string(),
+        path: path.to_string(),
+        body,
+    })
 }
 
 fn json_result<T: Serialize>(result: Result<T, ApplicationError>) -> String {
@@ -474,6 +565,7 @@ fn json_response(status: u16, body: &impl Serialize) -> String {
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
+        413 => "Payload Too Large",
         404 => "Not Found",
         _ => "Error",
     };
@@ -496,6 +588,7 @@ fn error_response(error: ApplicationError) -> String {
 mod tests {
     use super::*;
     use infrastructure::MemoryRepository;
+    use std::io::Cursor;
 
     fn api() -> AgentApi<MemoryRepository> {
         AgentApi::new(MemoryRepository::with_default_settings().build_service())
@@ -583,5 +676,70 @@ mod tests {
             .elements
             .iter()
             .any(|element| element.id == "about.dialog"));
+    }
+
+    #[test]
+    fn reads_valid_get_and_fragmented_post_requests() {
+        let mut get = Cursor::new(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        let request = read_request(&mut get).unwrap();
+        assert_eq!(request.method, "GET");
+        assert_eq!(request.path, "/health");
+        assert!(request.body.is_empty());
+
+        let body = r#"{"id":"main.input","action":"set_value","value":"Test"}"#;
+        let post = format!(
+            "POST /agent/ui/action HTTP/1.1\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let mut fragmented = BufReader::with_capacity(1, Cursor::new(post.into_bytes()));
+        let request = read_request(&mut fragmented).unwrap();
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.path, "/agent/ui/action");
+        assert_eq!(request.body, body);
+    }
+
+    #[test]
+    fn rejects_malformed_and_oversized_requests() {
+        let mut malformed = Cursor::new(b"GET /health\r\n\r\n");
+        assert!(matches!(
+            read_request(&mut malformed),
+            Err(HttpRequestError::BadRequest("Ungültige Anfragezeile"))
+        ));
+
+        let mut invalid_length =
+            Cursor::new(b"POST /health HTTP/1.1\r\nContent-Length: nope\r\n\r\n");
+        assert!(matches!(
+            read_request(&mut invalid_length),
+            Err(HttpRequestError::BadRequest("Ungültige Content-Length"))
+        ));
+
+        let oversized_header = format!(
+            "GET / HTTP/1.1\r\nX: {}\r\n\r\n",
+            "x".repeat(MAX_HEADER_BYTES)
+        );
+        let mut oversized_header = Cursor::new(oversized_header);
+        assert!(matches!(
+            read_request(&mut oversized_header),
+            Err(HttpRequestError::PayloadTooLarge)
+        ));
+
+        let mut oversized_body = Cursor::new(format!(
+            "POST / HTTP/1.1\r\nContent-Length: {}\r\n\r\n",
+            MAX_BODY_BYTES + 1
+        ));
+        assert!(matches!(
+            read_request(&mut oversized_body),
+            Err(HttpRequestError::PayloadTooLarge)
+        ));
+    }
+
+    #[test]
+    fn rejects_non_utf8_request_bodies() {
+        let mut request =
+            Cursor::new(b"POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\n\xff".as_slice());
+        assert!(matches!(
+            read_request(&mut request),
+            Err(HttpRequestError::BadRequest("Anfragetext ist nicht UTF-8"))
+        ));
     }
 }

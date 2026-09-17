@@ -50,6 +50,11 @@ noVNC is available at `http://localhost:6080/vnc.html`. Use
 machine-readable diagnostics. Docker and all compilation remain inside the
 container; the host only needs Docker Desktop, VS Code, and Dev Containers.
 
+The local API accepts bounded HTTP/1.1 requests only: headers are limited to
+8 KiB, JSON request bodies to 8 KiB, and individual reads and writes time out
+after five seconds. It returns explicit `400` or `413` JSON errors for invalid
+or oversized requests.
+
 The post-create hook installs the pinned Rust components, fetches locked
 dependencies, and runs doctor, check, and unit/application tests. Runtime
 semantic checks remain explicit: run `./scripts/e2e` after `./scripts/run`.

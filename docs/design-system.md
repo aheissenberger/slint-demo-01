@@ -51,9 +51,9 @@ is still only partially Fluent 2:
 - `Theme.shadow` is defined but the screen does not apply it to a meaningful
   surface. Conversely, adding decorative shadows to controls would be the
   wrong correction: Fluent controls remain flat.
-- The theme exposes `Segoe UI Variable` but the token contract must include a
-  `Segoe UI` fallback and a platform fallback. Linux screenshots can therefore
-  differ from Windows typography without proving a Windows fidelity problem.
+- The theme exposes `Segoe UI Variable`; when it is unavailable, Slint uses the
+  platform font resolver's fallback. Linux screenshots can therefore differ
+  from Windows typography without proving a Windows fidelity problem.
 - Shared controls have the right starting geometry, but every state must be
   reviewed as a complete interaction system: keyboard focus, hover, pressed,
   disabled, and invalid states must be visible and semantically exposed. An

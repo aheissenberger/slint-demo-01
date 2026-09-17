@@ -14,7 +14,6 @@ export component MainWindow inherits Window {
     callback input-changed(string);
     callback pick-file();
     callback show-native-file-picker();
-    callback focus-applied();
     callback reset();
     callback about-visibility-changed(bool);
 
@@ -38,7 +37,6 @@ export component MainWindow inherits Window {
         } else if (element-id == "main.submit") {
             submit-button.focus-control();
         }
-        root.focus-applied();
     }
 
     title: "Slint Agent Desktop";
@@ -76,7 +74,7 @@ export component MainWindow inherits Window {
         y: 0;
         width: root.width;
         height: root.height;
-        close-policy: close-on-click-outside;
+        close-policy: no-auto-close;
 
         Rectangle {
             width: 100%;
@@ -148,6 +146,9 @@ export component MainWindow inherits Window {
         border-width: Theme.border_width;
         border-color: Theme.border;
         background: Theme.panel;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-blur: Theme.surface_shadow_blur;
+        drop-shadow-offset-y: Theme.surface_shadow_offset_y;
 
         VerticalLayout {
             x: Theme.space_6;

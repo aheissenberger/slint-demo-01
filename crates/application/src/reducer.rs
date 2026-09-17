@@ -1,6 +1,5 @@
 use domain::{AppScreen, AppStatus, DomainError};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApplicationError {
@@ -12,34 +11,39 @@ pub enum ApplicationError {
     InvalidPayload(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppState {
     pub revision: u64,
-    pub screen: AppScreen,
     pub input: String,
     pub selected_file: String,
     pub status: AppStatus,
     pub error_message: Option<String>,
     pub busy: bool,
-    pub about_open: bool,
-    pub file_picker_requested: bool,
-    pub focused_element: Option<String>,
+    pub active_dialog: Option<ActiveDialog>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
             revision: 0,
-            screen: AppScreen::Main,
             input: String::new(),
             selected_file: String::new(),
             status: AppStatus::Ready,
             error_message: None,
             busy: false,
-            about_open: false,
-            file_picker_requested: false,
-            focused_element: None,
+            active_dialog: None,
         }
+    }
+
+    pub fn screen(&self) -> AppScreen {
+        match self.active_dialog {
+            Some(ActiveDialog::About) => AppScreen::About,
+            None => AppScreen::Main,
+        }
+    }
+
+    pub fn is_about_open(&self) -> bool {
+        self.active_dialog == Some(ActiveDialog::About)
     }
 
     pub fn can_submit(&self) -> bool {
@@ -58,47 +62,28 @@ impl AppState {
                 self.error_message = None;
                 Ok("Wert aktualisiert".to_string())
             }
-            AppAction::Focus { element_id } => {
-                self.focused_element = Some(element_id.clone());
-                Ok(format!("{element_id} fokussiert"))
-            }
-            AppAction::ClearFocus => {
-                self.focused_element = None;
-                Ok("Fokus aktualisiert".to_string())
-            }
+            AppAction::Focus { element_id } => Ok(format!("{element_id} fokussiert")),
             AppAction::SelectFile { path } => {
                 let path = AppReducer::validate_file_path(path)?;
                 self.selected_file = path;
-                self.file_picker_requested = false;
                 Ok("Datei ausgewählt".to_string())
             }
-            AppAction::RequestFilePicker => {
-                if self.file_picker_requested {
-                    return Ok("Dateiauswahl ist bereits geöffnet".to_string());
-                }
-                self.file_picker_requested = true;
-                Ok("Dateiauswahl geöffnet".to_string())
-            }
-            AppAction::CancelFileSelection => {
-                self.file_picker_requested = false;
-                Ok("Dateiauswahl abgebrochen".to_string())
-            }
+            AppAction::RequestFilePicker => Ok("Dateiauswahl geöffnet".to_string()),
+            AppAction::CancelFileSelection => Ok("Dateiauswahl abgebrochen".to_string()),
             AppAction::Reset => {
                 self.input.clear();
                 self.status = AppStatus::Ready;
                 self.busy = false;
                 self.error_message = None;
-                self.focused_element = None;
+                self.active_dialog = None;
                 Ok("zurückgesetzt".to_string())
             }
             AppAction::OpenAbout => {
-                self.about_open = true;
-                self.screen = AppScreen::About;
+                self.active_dialog = Some(ActiveDialog::About);
                 Ok("Info-Dialog geöffnet".to_string())
             }
             AppAction::CloseAbout => {
-                self.about_open = false;
-                self.screen = AppScreen::Main;
+                self.active_dialog = None;
                 Ok("Info-Dialog geschlossen".to_string())
             }
         }
@@ -133,17 +118,33 @@ impl AppState {
     }
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActiveDialog {
+    About,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppAction {
     SetInput { value: String },
     Focus { element_id: String },
-    ClearFocus,
     SelectFile { path: String },
     RequestFilePicker,
     CancelFileSelection,
     Reset,
     OpenAbout,
     CloseAbout,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppEffect {
+    Focus { element_id: String },
+    OpenNativeFilePicker,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,13 +187,6 @@ impl AppReducer {
         if trimmed.contains('\0') {
             return Err(ApplicationError::InvalidPayload(
                 "Dateipfad enthält ungültige Nullbytes".into(),
-            ));
-        }
-
-        let path = Path::new(trimmed);
-        if path.is_dir() {
-            return Err(ApplicationError::InvalidPayload(
-                "Dateipfad muss auf eine Datei verweisen".into(),
             ));
         }
 

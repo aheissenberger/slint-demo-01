@@ -1,3 +1,5 @@
+import { Palette } from "std-widgets.slint";
+
 export global Theme {
     out property <length> space_1: 4px;
     out property <length> space_2: 8px;
@@ -7,35 +9,37 @@ export global Theme {
     out property <length> space_6: 24px;
     out property <length> space_8: 32px;
 
-    out property <color> background: #f7f7f7;
-    out property <color> panel: #ffffff;
-    out property <color> panel_alt: #f5f5f5;
-    out property <color> panel_subtle: #fbfbfb;
-    out property <color> panel_tint: #f3f8fd;
-    out property <color> panel_disabled: #f5f5f5;
-    out property <color> border: #e1e1e1;
-    out property <color> border_strong: #c7c7c7;
+    // Slint's Fluent style resolves this from the current system color scheme.
+    out property <bool> dark_color_scheme: Palette.color-scheme == ColorScheme.dark;
+    out property <color> background: dark_color_scheme ? #1c1c1c : #f7f7f7;
+    out property <color> panel: dark_color_scheme ? #292929 : #ffffff;
+    out property <color> panel_alt: dark_color_scheme ? #333333 : #f5f5f5;
+    out property <color> panel_subtle: dark_color_scheme ? #242424 : #fbfbfb;
+    out property <color> panel_tint: dark_color_scheme ? #203445 : #f3f8fd;
+    out property <color> panel_disabled: dark_color_scheme ? #242424 : #f5f5f5;
+    out property <color> border: dark_color_scheme ? #4c4c4c : #e1e1e1;
+    out property <color> border_strong: dark_color_scheme ? #777777 : #c7c7c7;
 
-    out property <color> text_primary: #1a1a1a;
-    out property <color> text_secondary: #4a4a4a;
-    out property <color> text_disabled: #8a8a8a;
-    out property <color> text_placeholder: #616161;
+    out property <color> text_primary: dark_color_scheme ? #f5f5f5 : #1a1a1a;
+    out property <color> text_secondary: dark_color_scheme ? #c7c7c7 : #4a4a4a;
+    out property <color> text_disabled: dark_color_scheme ? #8f8f8f : #8a8a8a;
+    out property <color> text_placeholder: dark_color_scheme ? #ababab : #616161;
 
-    out property <color> accent: #0f6cbd;
-    out property <color> accent_hover: #115ea3;
-    out property <color> accent_pressed: #0c3b6f;
-    out property <color> accent_foreground: #ffffff;
-    out property <color> destructive_surface: #f3d9d9;
-    out property <color> destructive_surface_hover: #f1d3d3;
-    out property <color> destructive_surface_pressed: #ebc2c2;
+    out property <color> accent: dark_color_scheme ? #60cdff : #0f6cbd;
+    out property <color> accent_hover: dark_color_scheme ? #8edbff : #115ea3;
+    out property <color> accent_pressed: dark_color_scheme ? #3bb9ed : #0c3b6f;
+    out property <color> accent_foreground: dark_color_scheme ? #002b45 : #ffffff;
+    out property <color> destructive_surface: dark_color_scheme ? #592b2f : #f3d9d9;
+    out property <color> destructive_surface_hover: dark_color_scheme ? #70373c : #f1d3d3;
+    out property <color> destructive_surface_pressed: dark_color_scheme ? #853f45 : #ebc2c2;
 
-    out property <color> focus: #005fb8;
-    out property <color> focus_ring: #005fb8;
-    out property <color> success: #107c10;
-    out property <color> warning: #9a6700;
-    out property <color> error: #d13438;
+    out property <color> focus: dark_color_scheme ? #ffffff : #005fb8;
+    out property <color> focus_ring: dark_color_scheme ? #ffffff : #005fb8;
+    out property <color> success: dark_color_scheme ? #6ccb5f : #107c10;
+    out property <color> warning: dark_color_scheme ? #f0b849 : #9a6700;
+    out property <color> error: dark_color_scheme ? #ff99a4 : #d13438;
 
-    out property <color> shadow: rgba(0, 0, 0, 0.12);
+    out property <color> shadow: dark_color_scheme ? rgba(0, 0, 0, 0.42) : rgba(0, 0, 0, 0.12);
     // Modal backdrop behind an elevated dialog surface (Fluent 2 smoke layer).
     out property <color> scrim: rgba(0, 0, 0, 0.4);
     // Matches Fluent 2 ControlCornerRadius (buttons, text fields).
@@ -60,6 +64,11 @@ export global Theme {
     out property <length> border_width: 1px;
     out property <length> border_width_none: 0px;
     out property <length> focus_border_width: 2px;
+    out property <length> surface_shadow_blur: 8px;
+    out property <length> surface_shadow_offset_y: 2px;
+    out property <length> dialog_shadow_blur: 16px;
+    out property <length> dialog_shadow_offset_y: 8px;
+    out property <duration> motion_fast: 100ms;
     out property <length> title_size: 24px;
     out property <length> subtitle_size: 18px;
     out property <length> body_size: 14px;

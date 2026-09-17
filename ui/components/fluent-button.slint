@@ -22,9 +22,17 @@ export component FluentButton inherits Rectangle {
     background: disabled ? Theme.panel_disabled : (primary ? Theme.accent : (destructive ? Theme.destructive_surface : Theme.panel));
     border-color: disabled ? Theme.border : (primary ? Theme.accent : Theme.border);
     opacity: disabled ? Theme.disabled_opacity : 1;
+    animate background { duration: Theme.motion_fast; }
     accessible-role: button;
+    accessible-enabled: !disabled;
     accessible-label: root.label;
     accessible-description: root.agent-id;
+    accessible-action-default => {
+        if (!disabled) {
+            root.clicked();
+        }
+    }
+    forward-focus: focus-scope;
 
     states [
         pressed when touch-area.pressed : {
@@ -40,8 +48,17 @@ export component FluentButton inherits Rectangle {
     ]
 
     focus-scope := FocusScope {
-        width: root.width;
-        height: root.height;
+        x: 0;
+        width: 0;
+        enabled: !disabled;
+
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                touch-area.clicked();
+                return accept;
+            }
+            return reject;
+        }
 
         touch-area := TouchArea {
             enabled: !disabled;

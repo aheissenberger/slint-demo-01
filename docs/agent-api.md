@@ -112,6 +112,11 @@ loop. There is no synchronization polling timer. This means `set_value`,
 `click`, and application commands can be followed by visual verification
 without creating a second UI state.
 
+Transient UI work is emitted separately from persistent state: focusing a
+control and opening the native file dialog are one-shot effects. The Slint
+adapter executes each effect once, so a later state update cannot repeat a
+file-dialog request or steal focus.
+
 ## Shared application state and component metadata
 
 The application store in `crates/application` is the single source of truth

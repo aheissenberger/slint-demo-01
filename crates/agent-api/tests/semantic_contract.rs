@@ -214,7 +214,7 @@ fn rejected_ui_actions_are_visible_in_agent_state_and_status() {
         .execute_ui_action(AgentActionRequest {
             action: "set_value".into(),
             id: "main.file-picker".into(),
-            value: Some("/workspace".into()),
+            value: Some("\0".into()),
         })
         .unwrap_err();
 
