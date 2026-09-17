@@ -1,4 +1,4 @@
-name: Windows build
+name: Desktop builds
 
 on:
   workflow_dispatch:
@@ -35,4 +35,30 @@ jobs:
         with:
           name: slint-agent-desktop-windows-x86_64
           path: target/release/desktop.exe
+          if-no-files-found: error
+
+  macos:
+    name: Build desktop app
+    runs-on: macos-26
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1-aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release executable
+        run: cargo build --locked --release -p desktop --no-default-features
+
+      - name: Upload macOS executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: slint-agent-desktop-macos-arm64
+          path: target/release/desktop
           if-no-files-found: error
