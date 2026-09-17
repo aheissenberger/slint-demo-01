@@ -86,6 +86,88 @@ fn semantic_contract_exposes_stable_controls_and_state_transitions() {
 }
 
 #[test]
+fn notes_feature_ui_creates_selects_updates_and_archives_notes() {
+    let api = api();
+    let initial = api.inspect_ui().expect("initial UI inspection");
+    assert!(initial
+        .elements
+        .iter()
+        .any(|element| element.id == "notes.new"));
+    assert!(
+        !initial
+            .elements
+            .iter()
+            .find(|element| element.id == "notes.save")
+            .expect("notes.save")
+            .enabled
+    );
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "set_value".into(),
+        id: "notes.title".into(),
+        value: Some("Erste Notiz".into()),
+    })
+    .expect("set note title");
+    api.execute_ui_action(AgentActionRequest {
+        action: "set_value".into(),
+        id: "notes.body".into(),
+        value: Some("Inhalt".into()),
+    })
+    .expect("set note body");
+    assert!(
+        api.inspect_ui()
+            .expect("inspection with draft")
+            .elements
+            .iter()
+            .find(|element| element.id == "notes.save")
+            .expect("notes.save with draft")
+            .enabled
+    );
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "notes.save".into(),
+        value: None,
+    })
+    .expect("save note");
+    let state = api.get_state().expect("state after save");
+    assert_eq!(state.notes.len(), 1);
+    assert_eq!(state.note_title, "Erste Notiz");
+    assert!(state.selected_note_id.is_some());
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "notes.item.0".into(),
+        value: None,
+    })
+    .expect("select note");
+    api.execute_command(AgentCommandRequest {
+        command: "set_note_title".into(),
+        arguments: serde_json::json!({ "value": "Aktualisierte Notiz" }),
+    })
+    .expect("set title command");
+    api.execute_command(AgentCommandRequest {
+        command: "save_note".into(),
+        arguments: serde_json::Value::Null,
+    })
+    .expect("save note command");
+    assert_eq!(
+        api.get_state().expect("state after update").notes[0].title,
+        "Aktualisierte Notiz"
+    );
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "notes.archive".into(),
+        value: None,
+    })
+    .expect("archive note");
+    let archived = api.get_state().expect("state after archive");
+    assert!(archived.notes.is_empty());
+    assert!(archived.selected_note_id.is_none());
+}
+
+#[test]
 fn disabled_submit_cannot_be_activated_through_the_agent_api() {
     let api = api();
     let revision = api.revision().expect("initial revision");

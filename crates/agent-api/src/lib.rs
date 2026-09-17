@@ -1,4 +1,6 @@
-use application::{AppAction, AppService, AppStateStore, ApplicationError, ThemeMode};
+use application::{
+    AppAction, AppService, AppStateStore, ApplicationError, NoteListItem, ThemeMode,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -15,6 +17,10 @@ pub struct AgentStateResponse {
     pub progress: Option<u8>,
     pub error: Option<String>,
     pub theme_mode: String,
+    pub notes: Vec<NoteListItem>,
+    pub selected_note_id: Option<String>,
+    pub note_title: String,
+    pub note_body: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +87,90 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
         UiComponentMetadata {
             role: "status",
             actions: &[],
+        },
+    ),
+    (
+        "notes.list",
+        UiComponentMetadata {
+            role: "list",
+            actions: &["get_value"],
+        },
+    ),
+    (
+        "notes.new",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "notes.title",
+        UiComponentMetadata {
+            role: "textbox",
+            actions: &["get_value", "set_value", "focus"],
+        },
+    ),
+    (
+        "notes.body",
+        UiComponentMetadata {
+            role: "textbox",
+            actions: &["get_value", "set_value", "focus"],
+        },
+    ),
+    (
+        "notes.save",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "notes.archive",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "notes.delete",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "notes.item.0",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
+        },
+    ),
+    (
+        "notes.item.1",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
+        },
+    ),
+    (
+        "notes.item.2",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
+        },
+    ),
+    (
+        "notes.item.3",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
+        },
+    ),
+    (
+        "notes.item.4",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click"],
         },
     ),
     (
@@ -213,7 +303,7 @@ pub struct AgentApi<S> {
 
 impl<S> AgentApi<S>
 where
-    S: application::AppRepository + Clone + Send + Sync + 'static,
+    S: application::AppRepository + application::NoteRepository + Clone + Send + Sync + 'static,
 {
     pub fn new(service: AppService<S>) -> Self {
         Self::from_store(Arc::new(AppStateStore::new(service)))
@@ -237,6 +327,10 @@ where
             progress: state.progress,
             error: state.error_message,
             theme_mode: state.theme_mode.as_str().to_string(),
+            notes: state.notes,
+            selected_note_id: state.selected_note_id,
+            note_title: state.note_title,
+            note_body: state.note_body,
         })
     }
 
@@ -244,85 +338,14 @@ where
     pub fn inspect_ui(&self) -> Result<UiInspectionResponse, ApplicationError> {
         let state = self.store.current_state()?;
         let main_controls_enabled = state.active_dialog.is_none();
-        let mut elements = vec![
-            element(
-                "main.input",
-                main_controls_enabled,
-                Some(state.input.clone()),
-                "Haupteingabe",
-            ),
-            element(
-                "main.submit",
-                main_controls_enabled && state.can_submit(),
-                None,
-                "Senden",
-            ),
-            element(
-                "main.cancel",
-                state.busy && main_controls_enabled,
-                None,
-                "Abbrechen",
-            ),
-            element("main.reset", main_controls_enabled, None, "Zurücksetzen"),
-            element(
-                "main.file-picker",
-                main_controls_enabled,
-                Some(state.selected_file.clone()),
-                "Datei auswählen",
-            ),
-            element(
-                "main.selected-file",
-                true,
-                Some(state.selected_file.clone()),
-                "Ausgewählter Dateipfad",
-            ),
-            element(
-                "main.status",
-                true,
-                Some(state.error_message.as_deref().map_or_else(
-                    || state.status.to_string(),
-                    |error| format!("Fehler: {error}"),
-                )),
-                "Anwendungsstatus",
-            ),
-            element(
-                "file.settings",
-                main_controls_enabled,
-                None,
-                "Einstellungen",
-            ),
-            element("help.about", main_controls_enabled, None, "Über"),
-        ];
+        let mut elements = main_elements(&state, main_controls_enabled);
+        elements.extend(note_elements(&state, main_controls_enabled));
+        elements.extend(shell_elements(main_controls_enabled));
         if state.is_settings_open() {
-            elements.push(element("settings.dialog", true, None, "Einstellungen"));
-            elements.push(element(
-                "settings.theme.system",
-                true,
-                Some((state.theme_mode == ThemeMode::System).to_string()),
-                "Systemeinstellung verwenden",
-            ));
-            elements.push(element(
-                "settings.theme.light",
-                true,
-                Some((state.theme_mode == ThemeMode::Light).to_string()),
-                "Hell",
-            ));
-            elements.push(element(
-                "settings.theme.dark",
-                true,
-                Some((state.theme_mode == ThemeMode::Dark).to_string()),
-                "Dunkel",
-            ));
-            elements.push(element("settings.close", true, None, "Schließen"));
+            elements.extend(settings_elements(&state));
         }
         if state.is_about_open() {
-            elements.push(element(
-                "about.dialog",
-                true,
-                None,
-                "Über Slint Agent Desktop",
-            ));
-            elements.push(element("about.close", true, None, "Schließen"));
+            elements.extend(about_elements());
         }
 
         Ok(UiInspectionResponse {
@@ -367,6 +390,19 @@ where
                 let value = required_argument(&request.arguments, "path")?.to_string();
                 AppAction::SelectFile { path: value }
             }
+            "new_note" => AppAction::StartNewNote,
+            "select_note" => AppAction::SelectNote {
+                id: required_argument(&request.arguments, "id")?.to_string(),
+            },
+            "set_note_title" => AppAction::SetNoteTitle {
+                value: required_argument(&request.arguments, "value")?.to_string(),
+            },
+            "set_note_body" => AppAction::SetNoteBody {
+                value: required_argument(&request.arguments, "value")?.to_string(),
+            },
+            "save_note" => AppAction::SaveNote,
+            "archive_note" => AppAction::ArchiveNote,
+            "delete_note" => AppAction::DeleteNote,
             _ => {
                 return Err(ApplicationError::InvalidPayload(format!(
                     "nicht unterstützter Befehl: {}",
@@ -388,82 +424,114 @@ where
     ) -> Result<String, ApplicationError> {
         self.ensure_action_is_enabled(&action)?;
         match action.action.as_str() {
-            "click" if action.id == "main.submit" => Ok(self.store.submit()?.message),
-            "click" if action.id == "main.cancel" => Ok(self.store.cancel_submission()?.message),
-            "set_value" if action.id == "main.input" => Ok(self
+            "click" => self.click_ui_element(action),
+            "set_value" => self.set_ui_value(action),
+            "get_value" => self.get_ui_value(action),
+            "focus" => self.focus_ui_element(action),
+            _ => Err(unsupported_action(&action)),
+        }
+    }
+
+    fn click_ui_element(&self, action: AgentActionRequest) -> Result<String, ApplicationError> {
+        match action.id.as_str() {
+            "main.submit" => Ok(self.store.submit()?.message),
+            "main.cancel" => Ok(self.store.cancel_submission()?.message),
+            "main.reset" => Ok(self.store.dispatch(AppAction::Reset)?.message),
+            "main.file-picker" => Ok(self.store.dispatch(AppAction::RequestFilePicker)?.message),
+            "help.about" => Ok(self.store.dispatch(AppAction::OpenAbout)?.message),
+            "file.settings" => Ok(self.store.dispatch(AppAction::OpenSettings)?.message),
+            "about.close" => Ok(self.store.dispatch(AppAction::CloseAbout)?.message),
+            "settings.close" => Ok(self.store.dispatch(AppAction::CloseSettings)?.message),
+            "settings.theme.system" => self.set_theme_mode(ThemeMode::System),
+            "settings.theme.light" => self.set_theme_mode(ThemeMode::Light),
+            "settings.theme.dark" => self.set_theme_mode(ThemeMode::Dark),
+            "notes.new" => Ok(self.store.dispatch(AppAction::StartNewNote)?.message),
+            "notes.save" => Ok(self.store.dispatch(AppAction::SaveNote)?.message),
+            "notes.archive" => Ok(self.store.dispatch(AppAction::ArchiveNote)?.message),
+            "notes.delete" => Ok(self.store.dispatch(AppAction::DeleteNote)?.message),
+            id if id.starts_with("notes.item.") => self.select_note_slot(id),
+            _ => Err(unsupported_action(&action)),
+        }
+    }
+
+    fn set_ui_value(&self, action: AgentActionRequest) -> Result<String, ApplicationError> {
+        match action.id.as_str() {
+            "main.input" => Ok(self
                 .store
                 .dispatch(AppAction::SetInput {
                     value: required_action_value(&action)?.to_string(),
                 })?
                 .message),
-            "click" if action.id == "main.reset" => {
-                Ok(self.store.dispatch(AppAction::Reset)?.message)
-            }
-            "set_value" if action.id == "main.file-picker" => Ok(self
+            "main.file-picker" => Ok(self
                 .store
                 .dispatch(AppAction::SelectFile {
                     path: required_action_value(&action)?.to_string(),
                 })?
                 .message),
-            "click" if action.id == "main.file-picker" => {
-                Ok(self.store.dispatch(AppAction::RequestFilePicker)?.message)
-            }
-            "get_value" if action.id == "main.file-picker" => {
-                Ok(self.store.current_state()?.selected_file)
-            }
-            "get_value" if action.id == "main.selected-file" => {
-                Ok(self.store.current_state()?.selected_file)
-            }
-            "click" if action.id == "help.about" => {
-                Ok(self.store.dispatch(AppAction::OpenAbout)?.message)
-            }
-            "click" if action.id == "file.settings" => {
-                Ok(self.store.dispatch(AppAction::OpenSettings)?.message)
-            }
-            "click" if action.id == "about.close" => {
-                Ok(self.store.dispatch(AppAction::CloseAbout)?.message)
-            }
-            "click" if action.id == "settings.close" => {
-                Ok(self.store.dispatch(AppAction::CloseSettings)?.message)
-            }
-            "click" if action.id == "settings.theme.system" => Ok(self
+            "notes.title" => Ok(self
                 .store
-                .dispatch(AppAction::SetThemeMode {
-                    mode: ThemeMode::System,
+                .dispatch(AppAction::SetNoteTitle {
+                    value: required_action_value(&action)?.to_string(),
                 })?
                 .message),
-            "click" if action.id == "settings.theme.light" => Ok(self
+            "notes.body" => Ok(self
                 .store
-                .dispatch(AppAction::SetThemeMode {
-                    mode: ThemeMode::Light,
+                .dispatch(AppAction::SetNoteBody {
+                    value: required_action_value(&action)?.to_string(),
                 })?
                 .message),
-            "click" if action.id == "settings.theme.dark" => Ok(self
-                .store
-                .dispatch(AppAction::SetThemeMode {
-                    mode: ThemeMode::Dark,
-                })?
-                .message),
-            "get_value" if action.id == "main.input" => Ok(self.store.current_state()?.input),
-            "focus"
-                if action.id == "main.input"
-                    || action.id == "main.submit"
-                    || action.id == "main.reset"
-                    || action.id == "main.file-picker"
-                    || action.id == "main.cancel" =>
-            {
-                Ok(self
-                    .store
-                    .dispatch(AppAction::Focus {
-                        element_id: action.id,
-                    })?
-                    .message)
-            }
-            _ => Err(ApplicationError::InvalidPayload(format!(
-                "nicht unterstützte Aktion oder unbekanntes Element: {} {}",
-                action.action, action.id
-            ))),
+            _ => Err(unsupported_action(&action)),
         }
+    }
+
+    fn get_ui_value(&self, action: AgentActionRequest) -> Result<String, ApplicationError> {
+        let state = self.store.current_state()?;
+        match action.id.as_str() {
+            "main.file-picker" | "main.selected-file" => Ok(state.selected_file),
+            "main.input" => Ok(state.input),
+            "notes.list" => Ok(state.notes.len().to_string()),
+            "notes.title" => Ok(state.note_title),
+            "notes.body" => Ok(state.note_body),
+            _ => Err(unsupported_action(&action)),
+        }
+    }
+
+    fn focus_ui_element(&self, action: AgentActionRequest) -> Result<String, ApplicationError> {
+        match action.id.as_str() {
+            "main.input" | "main.submit" | "main.reset" | "main.file-picker" | "main.cancel"
+            | "notes.new" | "notes.title" | "notes.body" | "notes.save" | "notes.archive"
+            | "notes.delete" => Ok(self
+                .store
+                .dispatch(AppAction::Focus {
+                    element_id: action.id,
+                })?
+                .message),
+            _ => Err(unsupported_action(&action)),
+        }
+    }
+
+    fn set_theme_mode(&self, mode: ThemeMode) -> Result<String, ApplicationError> {
+        Ok(self
+            .store
+            .dispatch(AppAction::SetThemeMode { mode })?
+            .message)
+    }
+
+    fn select_note_slot(&self, id: &str) -> Result<String, ApplicationError> {
+        let index = note_index_from_element_id(id)?;
+        let note_id = self
+            .store
+            .current_state()?
+            .notes
+            .get(index)
+            .map(|note| note.id.clone())
+            .ok_or_else(|| {
+                ApplicationError::InvalidPayload(format!("Element ist nicht sichtbar: {id}"))
+            })?;
+        Ok(self
+            .store
+            .dispatch(AppAction::SelectNote { id: note_id })?
+            .message)
     }
 
     fn ensure_action_is_enabled(
@@ -485,8 +553,20 @@ where
                     | "main.file-picker"
                     | "file.settings"
                     | "help.about"
+                    | "notes.new"
+                    | "notes.title"
+                    | "notes.body"
+                    | "notes.save"
+                    | "notes.archive"
+                    | "notes.delete"
             )
         {
+            return Err(ApplicationError::InvalidPayload(format!(
+                "Element ist deaktiviert: {}",
+                action.id
+            )));
+        }
+        if state.active_dialog.is_some() && action.id.starts_with("notes.item.") {
             return Err(ApplicationError::InvalidPayload(format!(
                 "Element ist deaktiviert: {}",
                 action.id
@@ -516,6 +596,9 @@ where
             "main.cancel" => state.busy,
             "main.reset"
             | "main.file-picker"
+            | "notes.new"
+            | "notes.title"
+            | "notes.body"
             | "file.settings"
             | "help.about"
             | "about.close"
@@ -523,6 +606,12 @@ where
             | "settings.theme.system"
             | "settings.theme.light"
             | "settings.theme.dark" => true,
+            "notes.save" => state.can_save_note(),
+            "notes.archive" | "notes.delete" => state.selected_note_id.is_some(),
+            id if id.starts_with("notes.item.") => {
+                let index = note_index_from_element_id(id)?;
+                index < state.notes.len() && index < 5
+            }
             _ => return Ok(()),
         };
         if enabled {
@@ -555,9 +644,176 @@ where
     }
 }
 
+fn main_elements(state: &application::AppState, main_controls_enabled: bool) -> Vec<AgentElement> {
+    vec![
+        element(
+            "main.input",
+            main_controls_enabled,
+            Some(state.input.clone()),
+            "Haupteingabe",
+        ),
+        element(
+            "main.submit",
+            main_controls_enabled && state.can_submit(),
+            None,
+            "Senden",
+        ),
+        element(
+            "main.cancel",
+            state.busy && main_controls_enabled,
+            None,
+            "Abbrechen",
+        ),
+        element("main.reset", main_controls_enabled, None, "Zurücksetzen"),
+        element(
+            "main.file-picker",
+            main_controls_enabled,
+            Some(state.selected_file.clone()),
+            "Datei auswählen",
+        ),
+        element(
+            "main.selected-file",
+            true,
+            Some(state.selected_file.clone()),
+            "Ausgewählter Dateipfad",
+        ),
+        element(
+            "main.status",
+            true,
+            Some(state.error_message.as_deref().map_or_else(
+                || state.status.to_string(),
+                |error| format!("Fehler: {error}"),
+            )),
+            "Anwendungsstatus",
+        ),
+    ]
+}
+
+fn note_elements(state: &application::AppState, main_controls_enabled: bool) -> Vec<AgentElement> {
+    let mut elements = vec![
+        element(
+            "notes.list",
+            true,
+            Some(state.notes.len().to_string()),
+            "Notizliste",
+        ),
+        element("notes.new", main_controls_enabled, None, "Neue Notiz"),
+        element(
+            "notes.title",
+            main_controls_enabled,
+            Some(state.note_title.clone()),
+            "Notiztitel",
+        ),
+        element(
+            "notes.body",
+            main_controls_enabled,
+            Some(state.note_body.clone()),
+            "Notizinhalt",
+        ),
+        element(
+            "notes.save",
+            main_controls_enabled && state.can_save_note(),
+            None,
+            "Speichern",
+        ),
+        element(
+            "notes.archive",
+            main_controls_enabled && state.selected_note_id.is_some(),
+            None,
+            "Archivieren",
+        ),
+        element(
+            "notes.delete",
+            main_controls_enabled && state.selected_note_id.is_some(),
+            None,
+            "Löschen",
+        ),
+    ];
+    let note = state.notes.first();
+    elements.push(element(
+        "notes.item.0",
+        main_controls_enabled && note.is_some(),
+        Some(note.map_or_else(String::new, |note| note.id.clone())),
+        note.map_or("Leerer Notizplatz", |note| note.title.as_str()),
+    ));
+    let note = state.notes.get(1);
+    elements.push(element(
+        "notes.item.1",
+        main_controls_enabled && note.is_some(),
+        Some(note.map_or_else(String::new, |note| note.id.clone())),
+        note.map_or("Leerer Notizplatz", |note| note.title.as_str()),
+    ));
+    let note = state.notes.get(2);
+    elements.push(element(
+        "notes.item.2",
+        main_controls_enabled && note.is_some(),
+        Some(note.map_or_else(String::new, |note| note.id.clone())),
+        note.map_or("Leerer Notizplatz", |note| note.title.as_str()),
+    ));
+    let note = state.notes.get(3);
+    elements.push(element(
+        "notes.item.3",
+        main_controls_enabled && note.is_some(),
+        Some(note.map_or_else(String::new, |note| note.id.clone())),
+        note.map_or("Leerer Notizplatz", |note| note.title.as_str()),
+    ));
+    let note = state.notes.get(4);
+    elements.push(element(
+        "notes.item.4",
+        main_controls_enabled && note.is_some(),
+        Some(note.map_or_else(String::new, |note| note.id.clone())),
+        note.map_or("Leerer Notizplatz", |note| note.title.as_str()),
+    ));
+    elements
+}
+
+fn shell_elements(main_controls_enabled: bool) -> Vec<AgentElement> {
+    vec![
+        element(
+            "file.settings",
+            main_controls_enabled,
+            None,
+            "Einstellungen",
+        ),
+        element("help.about", main_controls_enabled, None, "Über"),
+    ]
+}
+
+fn settings_elements(state: &application::AppState) -> Vec<AgentElement> {
+    vec![
+        element("settings.dialog", true, None, "Einstellungen"),
+        element(
+            "settings.theme.system",
+            true,
+            Some((state.theme_mode == ThemeMode::System).to_string()),
+            "Systemeinstellung verwenden",
+        ),
+        element(
+            "settings.theme.light",
+            true,
+            Some((state.theme_mode == ThemeMode::Light).to_string()),
+            "Hell",
+        ),
+        element(
+            "settings.theme.dark",
+            true,
+            Some((state.theme_mode == ThemeMode::Dark).to_string()),
+            "Dunkel",
+        ),
+        element("settings.close", true, None, "Schließen"),
+    ]
+}
+
+fn about_elements() -> Vec<AgentElement> {
+    vec![
+        element("about.dialog", true, None, "Über Slint Agent Desktop"),
+        element("about.close", true, None, "Schließen"),
+    ]
+}
+
 impl<S> AgentService for AgentApi<S>
 where
-    S: application::AppRepository + Clone + Send + Sync + 'static,
+    S: application::AppRepository + application::NoteRepository + Clone + Send + Sync + 'static,
 {
     fn get_state(&self) -> Result<AgentStateResponse, ApplicationError> {
         AgentApi::get_state(self)
@@ -592,6 +848,22 @@ fn required_action_value(action: &AgentActionRequest) -> Result<&str, Applicatio
     action.value.as_deref().ok_or_else(|| {
         ApplicationError::InvalidPayload(format!("Wert für Element fehlt: {}", action.id))
     })
+}
+
+fn note_index_from_element_id(id: &str) -> Result<usize, ApplicationError> {
+    let suffix = id.strip_prefix("notes.item.").ok_or_else(|| {
+        ApplicationError::InvalidPayload(format!("unbekanntes Notizelement: {id}"))
+    })?;
+    suffix
+        .parse::<usize>()
+        .map_err(|_| ApplicationError::InvalidPayload(format!("ungültiges Notizelement: {id}")))
+}
+
+fn unsupported_action(action: &AgentActionRequest) -> ApplicationError {
+    ApplicationError::InvalidPayload(format!(
+        "nicht unterstützte Aktion oder unbekanntes Element: {} {}",
+        action.action, action.id
+    ))
 }
 
 const MAX_HEADER_BYTES: usize = 8 * 1024;

@@ -1,6 +1,8 @@
 mod file_repository;
+mod sqlite_repository;
 
 pub use file_repository::FileRepository;
+pub use sqlite_repository::SqliteRepository;
 
 use application::{AppRepository, AppService, ApplicationError, NoteRepository};
 use domain::{AppSettings, Note, NoteId, SubmissionRecord};
@@ -112,12 +114,12 @@ impl MemoryRepository {
     }
 }
 
-/// Builds the default production repository: a persistent, file-backed
-/// adapter located in the platform data directory (overridable via the
+/// Builds the default production repository: a persistent SQLite adapter
+/// located in the platform data directory (overridable via the
 /// `SLINT_DEMO_DATA_DIR` environment variable). Kept as the historical entry
 /// point name so callers do not need to change beyond their type annotation.
 #[instrument(name = "infrastructure.initialized", fields(component = "repository"))]
-pub fn initialize_repository() -> FileRepository {
-    debug!("initializing persistent file-backed repository");
-    file_repository::initialize_file_repository()
+pub fn initialize_repository() -> Result<SqliteRepository, ApplicationError> {
+    debug!("initializing persistent SQLite repository");
+    sqlite_repository::initialize_sqlite_repository()
 }

@@ -16,6 +16,11 @@ before making a visual or interaction change.
   typography, corner radii, control sizes, borders, shadows, and motion. Add a
   named token before a value is needed; do not place a literal visual value in
   a screen or component.
+- Buttons, input fields, and form controls must be constrained to the inner
+  content width of their container. If a surface has visual insets, define an
+  inset-adjusted child layout (`x`, `y`, `width`, `height`) and size controls
+  against that layout; never size controls against the outer container in a way
+  that lets them protrude past borders or padding.
 - A literal visual value in a reusable component is also a violation. The only
   exceptions are values required by Slint syntax or documented platform
   constraints; document the exception next to the token boundary.

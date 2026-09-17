@@ -86,6 +86,24 @@ impl Note {
         }
     }
 
+    pub fn from_persisted(
+        id: NoteId,
+        title: NoteTitle,
+        body: NoteBody,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+        archived: bool,
+    ) -> Self {
+        Self {
+            id,
+            title,
+            body,
+            created_at,
+            updated_at,
+            archived,
+        }
+    }
+
     pub fn id(&self) -> &NoteId {
         &self.id
     }

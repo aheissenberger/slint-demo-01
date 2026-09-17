@@ -11,22 +11,21 @@ The repository follows a layered Rust architecture that isolates the business lo
 
 ## Persistence
 
-`infrastructure::FileRepository` is the production repository returned by
-`initialize_repository()`. It stores settings, submission records, and notes
-as a single versioned JSON document (default location: the platform data
-directory, overridable via the `SLINT_DEMO_DATA_DIR` environment variable).
+`infrastructure::SqliteRepository` is the production repository returned by
+`initialize_repository()`. It stores settings, submission records, and notes in
+`app-data.sqlite3` below the platform data directory (overridable via the
+`SLINT_DEMO_DATA_DIR` environment variable).
 
-- Reads are resilient: a missing file starts with defaults, and a corrupt
-  file is backed up (`*.corrupt-<unix-seconds>.bak`) next to itself and
-  replaced with defaults instead of crashing the application.
-- Writes are atomic (temp file + rename) so an interrupted write cannot
-  leave a truncated, unparsable file behind.
-- Older on-disk data migrates forward automatically: new optional fields
-  deserialize via `#[serde(default)]`, and the repository's `migrate` step
-  upgrades the stored schema `version` on next save.
+- Schema changes are applied through the `rusqlite_migration` crate. The
+  repository opens the database, enables foreign keys, and migrates to the
+  latest schema before application state is loaded.
+- Version 1 creates the singleton settings row, submission records, notes, and
+  an index for active notes ordered by update time.
+- `infrastructure::FileRepository` remains available as a legacy JSON adapter
+  covered by tests, but it is no longer the production default.
 - `infrastructure::MemoryRepository` remains available as a pure in-memory
-  adapter for tests; `FileRepository::in_memory()` offers the same
-  behavior behind the persistent adapter's type for callers that need a
+  adapter for tests; `SqliteRepository::in_memory()` offers the migrated SQLite
+  behavior behind the production adapter's type for callers that need a
   drop-in, disk-free instance.
 
 Both adapters implement `application::AppRepository` (settings and
@@ -34,6 +33,14 @@ submissions) and `application::NoteRepository` (the `Note` entity/use
 cases in `application::NoteService`), which is a small, meaningfully-named
 domain workflow — create/rename/archive/unarchive/delete — kept separate
 from the generic UI submission demo flow.
+
+## AppShell and notes workflow
+
+The main Slint surface is now a desktop AppShell: a notes sidebar exposes the
+active local notes, and the primary content pane edits, saves, archives, and
+deletes the selected note. The former submission demo remains as a secondary
+agent-testing section so existing semantic test paths continue to exercise the
+shared state/update pipeline.
 
 ## Settings persistence
 

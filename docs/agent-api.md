@@ -49,6 +49,15 @@ with `settings.theme.system`, `settings.theme.light`, or
 is available as the `set_theme` command with a `mode` argument of `system`,
 `light`, or `dark`.
 
+The notes AppShell is reachable without opening a dialog. Use
+`scripts/agent set notes.title "Titel"` and
+`scripts/agent set notes.body "Inhalt"` followed by
+`scripts/agent click notes.save` to create or update a note. Existing notes are
+exposed as stable visible slots `notes.item.0` through `notes.item.4`; empty
+slots remain disabled. The same behavior is available through commands:
+`new_note`, `select_note`, `set_note_title`, `set_note_body`, `save_note`,
+`archive_note`, and `delete_note`.
+
 Stable UI action errors use an application error envelope with a machine-readable
 `code` and a diagnostic `message`. Application commands and UI actions share the
 same `AgentApi` runtime, so they cannot diverge in business behavior.
@@ -169,7 +178,11 @@ reused.
   "status": "bereit",
   "busy": false,
   "error": null,
-  "theme_mode": "system"
+  "theme_mode": "system",
+  "notes": [],
+  "selected_note_id": null,
+  "note_title": "",
+  "note_body": ""
 }
 ```
 
@@ -179,6 +192,9 @@ reused.
   "screen": "main",
   "elements": [
     { "id": "main.input", "role": "textbox", "enabled": true, "value": "" },
+    { "id": "notes.title", "role": "textbox", "enabled": true, "value": "", "accessible_label": "Notiztitel" },
+    { "id": "notes.save", "role": "button", "enabled": false, "accessible_label": "Speichern" },
+    { "id": "notes.item.0", "role": "button", "enabled": false, "value": "", "accessible_label": "Leerer Notizplatz" },
     { "id": "main.file-picker", "role": "button", "enabled": true, "value": "", "accessible_label": "Datei auswählen" },
     { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Ausgewählter Dateipfad" },
     { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Senden" },

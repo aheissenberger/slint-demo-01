@@ -117,6 +117,96 @@ msgctxt "MainWindow"
 msgid "Abbrechen"
 msgstr ""
 
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Notizen"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Noch keine Notizen"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "{} aktive Notizen"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Notizliste"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Neue Notiz"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Leerer Notizplatz"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Notiz bearbeiten"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Schreiben, speichern und archivieren Sie lokale Notizen."
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Titel"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Titel der Notiz"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Notiztitel"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Inhalt"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Inhalt der Notiz"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Notizinhalt"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Löschen"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Archivieren"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Speichern"
+msgstr ""
+
+#: ui/app.slint
+msgctxt "MainWindow"
+msgid "Agent-Demo"
+msgstr ""
+
 #: ui/components/fluent-button-preview.slint:5
 msgctxt "FluentButtonPreview"
 msgid "Fluent-Schaltflächenvorschau"

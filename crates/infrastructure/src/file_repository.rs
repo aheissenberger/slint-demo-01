@@ -14,7 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, warn};
 
 /// Current on-disk schema version. Bump this and extend
 /// [`FileRepository::migrate`] whenever the persisted shape changes in a way
@@ -254,19 +254,6 @@ impl NoteRepository for FileRepository {
         };
         self.persist(&snapshot)
     }
-}
-
-/// Initializes the default persistent repository, falling back to an
-/// in-memory-only store (with a logged warning) if the platform data
-/// directory turns out to be unusable.
-#[instrument(name = "infrastructure.initialized", fields(component = "repository"))]
-pub fn initialize_file_repository() -> FileRepository {
-    let repository = FileRepository::with_default_location();
-    debug!(
-        path = ?repository.path,
-        "initialized persistent file-backed repository"
-    );
-    repository
 }
 
 #[cfg(test)]

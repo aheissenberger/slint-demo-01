@@ -101,6 +101,10 @@ where
         self.repository.load_settings()
     }
 
+    pub fn repository(&self) -> &R {
+        &self.repository
+    }
+
     /// Persists the given appearance preference, leaving every other
     /// persisted setting untouched.
     pub fn save_theme_mode(&self, theme_mode: &str) -> Result<(), ApplicationError> {

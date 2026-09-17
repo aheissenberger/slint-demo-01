@@ -11,6 +11,9 @@ slint::include_modules!();
 
 mod runtime;
 
+const MIN_RESTORED_WINDOW_WIDTH: u32 = 784;
+const MIN_RESTORED_WINDOW_HEIGHT: u32 = 680;
+
 fn apply_state(ui: &MainWindow, state: AppState) {
     let catalog = Catalog::default();
     let status = state.error_message.as_deref().map_or_else(
@@ -21,6 +24,16 @@ fn apply_state(ui: &MainWindow, state: AppState) {
     ui.set_submit_enabled(state.can_submit());
     ui.set_cancel_enabled(state.busy);
     ui.set_progress(state.progress.map_or(-1, i32::from));
+    ui.set_note_save_enabled(state.can_save_note());
+    ui.set_note_selected(state.selected_note_id.is_some());
+    ui.set_notes_count(state.notes.len().try_into().unwrap_or(i32::MAX));
+    if ui.get_note_title().as_str() != state.note_title {
+        ui.set_note_title(state.note_title.clone().into());
+    }
+    if ui.get_note_body().as_str() != state.note_body {
+        ui.set_note_body(state.note_body.clone().into());
+    }
+    apply_note_slots(ui, &state.notes);
     if ui.get_input_value().as_str() != state.input {
         ui.set_input_value(state.input.clone().into());
     }
@@ -33,6 +46,49 @@ fn apply_state(ui: &MainWindow, state: AppState) {
         } else {
             ui.invoke_hide_about();
         }
+    }
+
+    fn apply_note_slots(ui: &MainWindow, notes: &[application::NoteListItem]) {
+        let slot = |index: usize| notes.get(index);
+        let apply_slot = |id: &mut dyn FnMut(SharedString),
+                          title: &mut dyn FnMut(SharedString),
+                          body: &mut dyn FnMut(SharedString),
+                          note: Option<&application::NoteListItem>| {
+            id(note.map_or("", |note| note.id.as_str()).into());
+            title(note.map_or("", |note| note.title.as_str()).into());
+            body(note.map_or("", |note| note.body.as_str()).into());
+        };
+
+        apply_slot(
+            &mut |value| ui.set_note_slot_0_id(value),
+            &mut |value| ui.set_note_slot_0_title(value),
+            &mut |value| ui.set_note_slot_0_body(value),
+            slot(0),
+        );
+        apply_slot(
+            &mut |value| ui.set_note_slot_1_id(value),
+            &mut |value| ui.set_note_slot_1_title(value),
+            &mut |value| ui.set_note_slot_1_body(value),
+            slot(1),
+        );
+        apply_slot(
+            &mut |value| ui.set_note_slot_2_id(value),
+            &mut |value| ui.set_note_slot_2_title(value),
+            &mut |value| ui.set_note_slot_2_body(value),
+            slot(2),
+        );
+        apply_slot(
+            &mut |value| ui.set_note_slot_3_id(value),
+            &mut |value| ui.set_note_slot_3_title(value),
+            &mut |value| ui.set_note_slot_3_body(value),
+            slot(3),
+        );
+        apply_slot(
+            &mut |value| ui.set_note_slot_4_id(value),
+            &mut |value| ui.set_note_slot_4_title(value),
+            &mut |value| ui.set_note_slot_4_body(value),
+            slot(4),
+        );
     }
     if ui.get_settings_visible() != state.is_settings_open() {
         if state.is_settings_open() {
@@ -47,26 +103,20 @@ fn apply_state(ui: &MainWindow, state: AppState) {
 }
 
 pub struct DesktopApp {
-    store: Arc<application::AppStateStore<infrastructure::FileRepository>>,
+    store: Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     #[cfg(feature = "agent-api")]
-    agent_api: AgentApi<infrastructure::FileRepository>,
-}
-
-impl Default for DesktopApp {
-    fn default() -> Self {
-        let repository = initialize_repository();
-        let store = Arc::new(application::AppStateStore::new(repository.build_service()));
-        Self {
-            #[cfg(feature = "agent-api")]
-            agent_api: AgentApi::from_store(Arc::clone(&store)),
-            store,
-        }
-    }
+    agent_api: AgentApi<infrastructure::SqliteRepository>,
 }
 
 impl DesktopApp {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> Result<Self, DesktopAppError> {
+        let repository = initialize_repository().map_err(DesktopAppError::Application)?;
+        let store = Arc::new(application::AppStateStore::new(repository.build_service()));
+        Ok(Self {
+            #[cfg(feature = "agent-api")]
+            agent_api: AgentApi::from_store(Arc::clone(&store)),
+            store,
+        })
     }
 
     pub fn run() -> Result<(), DesktopAppError> {
@@ -75,7 +125,7 @@ impl DesktopApp {
         let _single_instance = runtime_storage
             .acquire_single_instance()
             .map_err(DesktopAppError::Runtime)?;
-        let app = Self::new();
+        let app = Self::new()?;
         let ui = MainWindow::new().map_err(|error| DesktopAppError::Ui(error.to_string()))?;
         ui.set_app_version(env!("CARGO_PKG_VERSION").into());
         Self::restore_window_state(&ui, &runtime_storage);
@@ -103,7 +153,7 @@ impl DesktopApp {
 
     fn configure_store(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         let updates = store.subscribe().expect("state subscription");
@@ -119,6 +169,7 @@ impl DesktopApp {
         Self::configure_about(ui, &store);
         Self::configure_settings(ui, &store);
         Self::configure_theme_mode(ui, &store);
+        Self::configure_notes(ui, &store);
         Self::configure_submit(ui, &store);
         Self::configure_cancel(ui, &store);
     }
@@ -155,7 +206,7 @@ impl DesktopApp {
 
     fn configure_input(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_input_changed(move |value| {
@@ -169,7 +220,7 @@ impl DesktopApp {
 
     fn configure_reset(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_reset(move || {
@@ -181,7 +232,7 @@ impl DesktopApp {
 
     fn configure_about(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_about_visibility_changed(move |open| {
@@ -198,7 +249,7 @@ impl DesktopApp {
 
     fn configure_settings(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_settings_visibility_changed(move |open| {
@@ -215,7 +266,7 @@ impl DesktopApp {
 
     fn configure_theme_mode(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_theme_mode_changed(move |mode| {
@@ -232,9 +283,67 @@ impl DesktopApp {
         });
     }
 
+    fn configure_notes(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
+    ) {
+        let note_store = Arc::clone(store);
+        ui.on_new_note(move || {
+            if let Err(error) = note_store.dispatch(AppAction::StartNewNote) {
+                tracing::error!(%error, "Neue Notiz konnte nicht vorbereitet werden");
+            }
+        });
+
+        let note_store = Arc::clone(store);
+        ui.on_select_note(move |id| {
+            if let Err(error) = note_store.dispatch(AppAction::SelectNote { id: id.to_string() }) {
+                tracing::error!(%error, "Notiz konnte nicht ausgewählt werden");
+            }
+        });
+
+        let note_store = Arc::clone(store);
+        ui.on_note_title_changed(move |value| {
+            if let Err(error) = note_store.dispatch(AppAction::SetNoteTitle {
+                value: value.to_string(),
+            }) {
+                tracing::error!(%error, "Notiztitel konnte nicht synchronisiert werden");
+            }
+        });
+
+        let note_store = Arc::clone(store);
+        ui.on_note_body_changed(move |value| {
+            if let Err(error) = note_store.dispatch(AppAction::SetNoteBody {
+                value: value.to_string(),
+            }) {
+                tracing::error!(%error, "Notizinhalt konnte nicht synchronisiert werden");
+            }
+        });
+
+        let note_store = Arc::clone(store);
+        ui.on_save_note(move || {
+            if let Err(error) = note_store.dispatch(AppAction::SaveNote) {
+                tracing::error!(%error, "Notiz konnte nicht gespeichert werden");
+            }
+        });
+
+        let note_store = Arc::clone(store);
+        ui.on_archive_note(move || {
+            if let Err(error) = note_store.dispatch(AppAction::ArchiveNote) {
+                tracing::error!(%error, "Notiz konnte nicht archiviert werden");
+            }
+        });
+
+        let note_store = Arc::clone(store);
+        ui.on_delete_note(move || {
+            if let Err(error) = note_store.dispatch(AppAction::DeleteNote) {
+                tracing::error!(%error, "Notiz konnte nicht gelöscht werden");
+            }
+        });
+    }
+
     fn configure_submit(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_submit(move |value: SharedString| {
@@ -247,7 +356,7 @@ impl DesktopApp {
 
     fn configure_cancel(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_cancel(move || {
@@ -259,7 +368,7 @@ impl DesktopApp {
 
     fn configure_file_picker(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_pick_file(move || {
@@ -271,7 +380,7 @@ impl DesktopApp {
 
     fn configure_native_file_picker(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
     ) {
         let store = Arc::clone(store);
         ui.on_show_native_file_picker(move || {
@@ -290,8 +399,10 @@ impl DesktopApp {
     fn restore_window_state(ui: &MainWindow, runtime_storage: &RuntimeStorage) {
         match runtime_storage.load_window_state() {
             Ok(Some(state)) => {
-                ui.window()
-                    .set_size(PhysicalSize::new(state.width, state.height));
+                ui.window().set_size(PhysicalSize::new(
+                    state.width.max(MIN_RESTORED_WINDOW_WIDTH),
+                    state.height.max(MIN_RESTORED_WINDOW_HEIGHT),
+                ));
                 ui.window()
                     .set_position(PhysicalPosition::new(state.x, state.y));
             }
@@ -304,7 +415,7 @@ impl DesktopApp {
 
     fn configure_orderly_shutdown(
         ui: &MainWindow,
-        store: &Arc<application::AppStateStore<infrastructure::FileRepository>>,
+        store: &Arc<application::AppStateStore<infrastructure::SqliteRepository>>,
         runtime_storage: Arc<RuntimeStorage>,
     ) {
         let weak = ui.as_weak();
@@ -332,6 +443,7 @@ impl DesktopApp {
 
 #[derive(Debug)]
 pub enum DesktopAppError {
+    Application(application::ApplicationError),
     Runtime(io::Error),
     Ui(String),
 }
@@ -345,6 +457,12 @@ impl DesktopAppError {
 impl std::fmt::Display for DesktopAppError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Application(error) => {
+                write!(
+                    formatter,
+                    "Anwendungsdaten konnten nicht vorbereitet werden: {error}"
+                )
+            }
             Self::Runtime(error) if runtime::is_single_instance_error(error) => {
                 formatter.write_str("Die Anwendung wird bereits ausgeführt")
             }

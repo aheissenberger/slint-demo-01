@@ -32,9 +32,12 @@ noVNC after a successful build. If a build fails, the previous desktop process
 keeps running; the runner restarts it only after a new binary exists. No manual
 restart or DevContainer rebuild is needed.
 Use `scripts/agent ui` to inspect semantic controls, `scripts/agent set
-main.input Test` followed by `scripts/agent click main.submit` to exercise the
-UI path, or `scripts/agent command submit Test` to exercise application intent
-directly. The HTTP agent API is development-only and listens on loopback.
+notes.title Test` followed by `scripts/agent click notes.save` to exercise the
+Notes AppShell path. The legacy agent demo remains available through
+`scripts/agent set main.input Test` and `scripts/agent click main.submit`.
+Persistent settings, submissions, and notes are stored in a migrated SQLite
+database under the platform data directory. The HTTP agent API is
+development-only and listens on loopback.
 MCP-capable coding agents can use `scripts/mcp` as a stdio server after
 `scripts/run`; see `docs/agent-api.md` for its tools and resources.
 

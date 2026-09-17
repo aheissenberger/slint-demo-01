@@ -124,6 +124,12 @@ font token rather than relying on the renderer default.
 - Keep standard controls 32 px high and text fields 36 px high, excluding an
   external label. A labelled field must have enough height for the label,
   spacing, and field without clipping.
+- Buttons, text fields, and other form controls must never be wider than the
+  inner content width of their containing surface. When a container has visual
+  insets, set the child layout's `x`, `y`, `width`, and `height` to the
+  inset-adjusted content box before assigning controls `width: parent.width`;
+  do not rely on layout padding if that makes children measure against the
+  outer container width.
 - Prefer a 1 px neutral border. Use a 2 px border only for invalid or focused
   states where the extra contrast is meaningful.
 - Do not stretch short forms vertically. Layouts must opt into start alignment

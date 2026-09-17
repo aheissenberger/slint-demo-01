@@ -74,6 +74,19 @@ where
         self.repository.update_note(note)
     }
 
+    pub fn update_note(
+        &self,
+        id: &NoteId,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Result<(), ApplicationError> {
+        let mut note = self.find_note(id)?;
+        let now = self.clock.now();
+        note.rename(NoteTitle::new(title)?, now);
+        note.set_body(NoteBody::new(body)?, now);
+        self.repository.update_note(note)
+    }
+
     pub fn archive_note(&self, id: &NoteId) -> Result<(), ApplicationError> {
         let mut note = self.find_note(id)?;
         note.archive(self.clock.now());

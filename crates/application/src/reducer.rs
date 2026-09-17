@@ -1,4 +1,4 @@
-use domain::{AppScreen, AppStatus, DomainError};
+use domain::{AppScreen, AppStatus, DomainError, Note};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +22,10 @@ pub struct AppState {
     pub progress: Option<u8>,
     pub active_dialog: Option<ActiveDialog>,
     pub theme_mode: ThemeMode,
+    pub notes: Vec<NoteListItem>,
+    pub selected_note_id: Option<String>,
+    pub note_title: String,
+    pub note_body: String,
 }
 
 impl AppState {
@@ -36,6 +40,10 @@ impl AppState {
             progress: None,
             active_dialog: None,
             theme_mode: ThemeMode::System,
+            notes: Vec::new(),
+            selected_note_id: None,
+            note_title: String::new(),
+            note_body: String::new(),
         }
     }
 
@@ -57,6 +65,36 @@ impl AppState {
 
     pub fn can_submit(&self) -> bool {
         !self.busy && !self.input.trim().is_empty()
+    }
+
+    pub fn can_save_note(&self) -> bool {
+        !self.note_title.trim().is_empty()
+    }
+
+    pub fn selected_note(&self) -> Option<&NoteListItem> {
+        self.selected_note_id
+            .as_deref()
+            .and_then(|id| self.notes.iter().find(|note| note.id == id))
+    }
+
+    pub fn replace_notes(&mut self, notes: Vec<NoteListItem>) {
+        self.notes = notes;
+        if let Some(selected_id) = self.selected_note_id.as_deref() {
+            if let Some(selected) = self.notes.iter().find(|note| note.id == selected_id) {
+                self.note_title = selected.title.clone();
+                self.note_body = selected.body.clone();
+                return;
+            }
+        }
+        if let Some(first) = self.notes.first() {
+            self.selected_note_id = Some(first.id.clone());
+            self.note_title = first.title.clone();
+            self.note_body = first.body.clone();
+        } else {
+            self.selected_note_id = None;
+            self.note_title.clear();
+            self.note_body.clear();
+        }
     }
 
     fn apply_action(&mut self, action: &AppAction) -> Result<String, ApplicationError> {
@@ -113,6 +151,42 @@ impl AppState {
                 self.theme_mode = *mode;
                 Ok(format!("App-Design auf {} gesetzt", mode.label()))
             }
+            AppAction::StartNewNote => {
+                self.selected_note_id = None;
+                self.note_title.clear();
+                self.note_body.clear();
+                self.error_message = None;
+                Ok("Neue Notiz vorbereitet".to_string())
+            }
+            AppAction::SelectNote { id } => {
+                let note = self
+                    .notes
+                    .iter()
+                    .find(|note| note.id == *id)
+                    .ok_or_else(|| {
+                        ApplicationError::InvalidPayload(format!(
+                            "Notiz wurde nicht gefunden: {id}"
+                        ))
+                    })?;
+                self.selected_note_id = Some(note.id.clone());
+                self.note_title = note.title.clone();
+                self.note_body = note.body.clone();
+                self.error_message = None;
+                Ok("Notiz ausgewählt".to_string())
+            }
+            AppAction::SetNoteTitle { value } => {
+                self.note_title = value.clone();
+                self.error_message = None;
+                Ok("Notiztitel aktualisiert".to_string())
+            }
+            AppAction::SetNoteBody { value } => {
+                self.note_body = value.clone();
+                self.error_message = None;
+                Ok("Notizinhalt aktualisiert".to_string())
+            }
+            AppAction::SaveNote | AppAction::ArchiveNote | AppAction::DeleteNote => {
+                Ok("Notizen aktualisiert".to_string())
+            }
         }
     }
 
@@ -158,6 +232,25 @@ impl AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteListItem {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub archived: bool,
+}
+
+impl From<Note> for NoteListItem {
+    fn from(note: Note) -> Self {
+        Self {
+            id: note.id().as_str().to_string(),
+            title: note.title().as_str().to_string(),
+            body: note.body().as_str().to_string(),
+            archived: note.is_archived(),
+        }
     }
 }
 
@@ -219,6 +312,13 @@ pub enum AppAction {
     OpenSettings,
     CloseSettings,
     SetThemeMode { mode: ThemeMode },
+    StartNewNote,
+    SelectNote { id: String },
+    SetNoteTitle { value: String },
+    SetNoteBody { value: String },
+    SaveNote,
+    ArchiveNote,
+    DeleteNote,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

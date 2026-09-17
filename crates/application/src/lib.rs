@@ -7,7 +7,7 @@ pub use localization::{Catalog, Locale};
 pub use notes::{NoteRepository, NoteService};
 pub use reducer::{
     ActiveDialog, AppAction, AppEffect, AppEvent, AppReducer, AppState, ApplicationError,
-    CommandResult, ThemeMode,
+    CommandResult, NoteListItem, ThemeMode,
 };
 pub use use_cases::{
     AppRepository, AppService, Clock, IdGenerator, SubmissionPayload, SystemClock, UuidV7Generator,
@@ -30,6 +30,7 @@ pub struct StateUpdate {
 #[derive(Clone)]
 pub struct AppStateStore<R> {
     service: AppService<R>,
+    note_service: NoteService<R>,
     publisher: StatePublisher,
     submission_sender: SyncSender<QueuedSubmission>,
     cancellation: Arc<std::sync::atomic::AtomicBool>,
@@ -43,10 +44,11 @@ struct StatePublisher {
 
 impl<R> AppStateStore<R>
 where
-    R: AppRepository + Clone + Send + 'static,
+    R: AppRepository + NoteRepository + Clone + Send + 'static,
 {
     pub fn new(service: AppService<R>) -> Self {
         let mut initial_state = AppState::new();
+        let note_service = NoteService::new(service.repository().clone());
         match service.load_settings() {
             Ok(settings) => match ThemeMode::parse(&settings.theme_mode) {
                 Ok(mode) => initial_state.theme_mode = mode,
@@ -56,6 +58,12 @@ where
             },
             Err(error) => {
                 tracing::warn!(%error, "gespeicherte Einstellungen konnten nicht geladen werden, verwende Vorgabewerte");
+            }
+        }
+        match note_service.list_active_notes() {
+            Ok(notes) => initial_state.replace_notes(notes.into_iter().map(Into::into).collect()),
+            Err(error) => {
+                tracing::warn!(%error, "gespeicherte Notizen konnten nicht geladen werden");
             }
         }
         let publisher = StatePublisher {
@@ -73,6 +81,7 @@ where
         );
         Self {
             service,
+            note_service,
             publisher,
             submission_sender,
             cancellation,
@@ -140,6 +149,12 @@ where
     }
 
     fn reduce(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
+        if matches!(
+            action,
+            AppAction::SaveNote | AppAction::ArchiveNote | AppAction::DeleteNote
+        ) {
+            return self.reduce_note_persistence_action(action);
+        }
         let effect = match &action {
             AppAction::Focus { element_id } => Some(AppEffect::Focus {
                 element_id: element_id.clone(),
@@ -170,6 +185,56 @@ where
                 Err(error)
             }
         }
+    }
+
+    fn reduce_note_persistence_action(
+        &self,
+        action: AppAction,
+    ) -> Result<CommandResult, ApplicationError> {
+        let current = self.current_state()?;
+        let message = match action {
+            AppAction::SaveNote => {
+                if let Some(id) = current.selected_note_id.as_deref() {
+                    let id = domain::NoteId::new(id.to_string())?;
+                    self.note_service
+                        .update_note(&id, current.note_title, current.note_body)?;
+                    "Notiz gespeichert".to_string()
+                } else {
+                    self.note_service
+                        .create_note(current.note_title, current.note_body)?;
+                    "Notiz erstellt".to_string()
+                }
+            }
+            AppAction::ArchiveNote => {
+                let id = current.selected_note_id.ok_or_else(|| {
+                    ApplicationError::InvalidPayload("Keine Notiz ausgewählt".into())
+                })?;
+                let id = domain::NoteId::new(id)?;
+                self.note_service.archive_note(&id)?;
+                "Notiz archiviert".to_string()
+            }
+            AppAction::DeleteNote => {
+                let id = current.selected_note_id.ok_or_else(|| {
+                    ApplicationError::InvalidPayload("Keine Notiz ausgewählt".into())
+                })?;
+                let id = domain::NoteId::new(id)?;
+                self.note_service.delete_note(&id)?;
+                "Notiz gelöscht".to_string()
+            }
+            _ => unreachable!("only note persistence actions are handled here"),
+        };
+        let notes: Vec<NoteListItem> = self
+            .note_service
+            .list_active_notes()?
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let (_, state) = self.publisher.update(None, |state| {
+            state.replace_notes(notes);
+            state.error_message = None;
+            Ok(message.clone())
+        })?;
+        Ok(CommandResult { message, state })
     }
 
     fn start_submission_worker(
@@ -286,7 +351,7 @@ impl StatePublisher {
 mod tests {
     use super::*;
     use chrono::{DateTime, TimeZone, Utc};
-    use domain::{AppId, AppSettings, SubmissionRecord};
+    use domain::{AppId, AppSettings, Note, NoteId, SubmissionRecord};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Condvar,
@@ -320,6 +385,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct FakeRepository {
         records: Arc<Mutex<Vec<SubmissionRecord>>>,
+        notes: Arc<Mutex<Vec<Note>>>,
     }
 
     impl AppRepository for FakeRepository {
@@ -343,6 +409,42 @@ mod tests {
                 .lock()
                 .map(|records| records.clone())
                 .map_err(|_| ApplicationError::Repository("Datensatzsperre beschädigt".into()))
+        }
+    }
+
+    impl NoteRepository for FakeRepository {
+        fn create_note(&self, note: Note) -> Result<(), ApplicationError> {
+            self.notes
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Notizsperre beschädigt".into()))?
+                .push(note);
+            Ok(())
+        }
+
+        fn list_notes(&self) -> Result<Vec<Note>, ApplicationError> {
+            self.notes
+                .lock()
+                .map(|notes| notes.clone())
+                .map_err(|_| ApplicationError::Repository("Notizsperre beschädigt".into()))
+        }
+
+        fn update_note(&self, note: Note) -> Result<(), ApplicationError> {
+            let mut notes = self
+                .notes
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Notizsperre beschädigt".into()))?;
+            if let Some(existing) = notes.iter_mut().find(|existing| existing.id() == note.id()) {
+                *existing = note;
+            }
+            Ok(())
+        }
+
+        fn delete_note(&self, id: &NoteId) -> Result<(), ApplicationError> {
+            self.notes
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Notizsperre beschädigt".into()))?
+                .retain(|note| note.id() != id);
+            Ok(())
         }
     }
 
@@ -387,6 +489,24 @@ mod tests {
             lock.lock()
                 .map(|state| state.records.clone())
                 .map_err(|_| ApplicationError::Repository("Testsperre beschädigt".into()))
+        }
+    }
+
+    impl NoteRepository for BlockingRepository {
+        fn create_note(&self, _note: Note) -> Result<(), ApplicationError> {
+            Ok(())
+        }
+
+        fn list_notes(&self) -> Result<Vec<Note>, ApplicationError> {
+            Ok(Vec::new())
+        }
+
+        fn update_note(&self, _note: Note) -> Result<(), ApplicationError> {
+            Ok(())
+        }
+
+        fn delete_note(&self, _id: &NoteId) -> Result<(), ApplicationError> {
+            Ok(())
         }
     }
 
@@ -664,6 +784,44 @@ mod tests {
     }
 
     #[test]
+    fn note_workflow_is_persisted_and_reflected_in_state() {
+        let repository = FakeRepository::default();
+        let store = AppStateStore::new(test_service(repository.clone()));
+
+        store
+            .dispatch(AppAction::SetNoteTitle {
+                value: "Erste Notiz".into(),
+            })
+            .unwrap();
+        store
+            .dispatch(AppAction::SetNoteBody {
+                value: "Inhalt".into(),
+            })
+            .unwrap();
+        store.dispatch(AppAction::SaveNote).unwrap();
+
+        let state = store.current_state().unwrap();
+        assert_eq!(state.notes.len(), 1);
+        assert_eq!(state.note_title, "Erste Notiz");
+        assert!(state.selected_note_id.is_some());
+        assert_eq!(repository.list_notes().unwrap().len(), 1);
+
+        store
+            .dispatch(AppAction::SetNoteTitle {
+                value: "Umbenannt".into(),
+            })
+            .unwrap();
+        store.dispatch(AppAction::SaveNote).unwrap();
+        assert_eq!(store.current_state().unwrap().notes[0].title, "Umbenannt");
+
+        store.dispatch(AppAction::ArchiveNote).unwrap();
+        let state = store.current_state().unwrap();
+        assert!(state.notes.is_empty());
+        assert!(state.selected_note_id.is_none());
+        assert!(repository.list_notes().unwrap()[0].is_archived());
+    }
+
+    #[test]
     fn focusing_a_control_publishes_a_transient_effect_without_mutating_state() {
         let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
@@ -701,14 +859,14 @@ mod tests {
 
         store.dispatch(AppAction::RequestFilePicker).unwrap();
         assert_eq!(
-            updates.recv().unwrap().effect,
+            updates.recv_timeout(Duration::from_secs(1)).unwrap().effect,
             Some(AppEffect::OpenNativeFilePicker)
         );
 
         let revision = store.current_state().unwrap().revision;
         store.dispatch(AppAction::RequestFilePicker).unwrap();
         assert_eq!(
-            updates.recv().unwrap().effect,
+            updates.recv_timeout(Duration::from_secs(1)).unwrap().effect,
             Some(AppEffect::OpenNativeFilePicker)
         );
         assert_eq!(store.current_state().unwrap().revision, revision);

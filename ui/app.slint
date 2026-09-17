@@ -10,6 +10,26 @@ export component MainWindow inherits Window {
     in property <bool> submit-enabled: false;
     in property <bool> cancel-enabled: false;
     in property <int> progress: -1;
+    in property <bool> note-save-enabled: false;
+    in property <bool> note-selected: false;
+    in property <int> notes-count: 0;
+    in-out property <string> note-title: "";
+    in-out property <string> note-body: "";
+    in-out property <string> note-slot-0-id: "";
+    in-out property <string> note-slot-0-title: "";
+    in-out property <string> note-slot-0-body: "";
+    in-out property <string> note-slot-1-id: "";
+    in-out property <string> note-slot-1-title: "";
+    in-out property <string> note-slot-1-body: "";
+    in-out property <string> note-slot-2-id: "";
+    in-out property <string> note-slot-2-title: "";
+    in-out property <string> note-slot-2-body: "";
+    in-out property <string> note-slot-3-id: "";
+    in-out property <string> note-slot-3-title: "";
+    in-out property <string> note-slot-3-body: "";
+    in-out property <string> note-slot-4-id: "";
+    in-out property <string> note-slot-4-title: "";
+    in-out property <string> note-slot-4-body: "";
     in-out property <string> input-value: "";
     in-out property <string> selected-file: "";
     in-out property <string> theme-mode: "system";
@@ -21,6 +41,13 @@ export component MainWindow inherits Window {
     callback show-native-file-picker();
     callback reset();
     callback cancel();
+    callback new-note();
+    callback save-note();
+    callback archive-note();
+    callback delete-note();
+    callback select-note(string);
+    callback note-title-changed(string);
+    callback note-body-changed(string);
     callback about-visibility-changed(bool);
     callback settings-visibility-changed(bool);
     callback theme-mode-changed(string);
@@ -68,13 +95,25 @@ export component MainWindow inherits Window {
             submit-button.focus-control();
         } else if (element-id == "main.cancel") {
             cancel-button.focus-control();
+        } else if (element-id == "notes.new") {
+            new-note-button.focus-control();
+        } else if (element-id == "notes.title") {
+            note-title-field.focus-control();
+        } else if (element-id == "notes.body") {
+            note-body-field.focus-control();
+        } else if (element-id == "notes.save") {
+            save-note-button.focus-control();
+        } else if (element-id == "notes.archive") {
+            archive-note-button.focus-control();
+        } else if (element-id == "notes.delete") {
+            delete-note-button.focus-control();
         }
     }
 
     title: @tr("Slint Agent Desktop");
-    preferred-width: 740px;
-    preferred-height: Theme.window_preferred_height;
-    min-width: 520px;
+    preferred-width: Theme.shell_sidebar_width + Theme.shell_content_width + Theme.page_gutter * 2 + Theme.space_6;
+    preferred-height: Theme.window_preferred_height + Theme.space_8;
+    min-width: Theme.shell_sidebar_width + Theme.shell_content_width + Theme.space_6;
     min-height: Theme.window_min_height;
 
     MenuBar {
@@ -214,145 +253,329 @@ export component MainWindow inherits Window {
         background: Theme.border;
     }
 
-    Rectangle {
-        x: (root.width - self.width) / 2;
+    HorizontalLayout {
+        x: Theme.page_gutter;
         y: Theme.app_header_height + Theme.space_6;
-        width: Theme.form_content_width + Theme.space_6 * 2;
+        width: root.width - Theme.page_gutter * 2;
         height: root.height - Theme.app_header_height - Theme.space_6 * 2;
-        border-radius: Theme.radius_2;
-        border-width: Theme.border_width;
-        border-color: Theme.border;
-        background: Theme.panel;
-        drop-shadow-color: Theme.shadow;
-        drop-shadow-blur: Theme.surface_shadow_blur;
-        drop-shadow-offset-y: Theme.surface_shadow_offset_y;
+        spacing: Theme.space_6;
+        alignment: start;
 
-        VerticalLayout {
-            x: Theme.space_6;
-            y: Theme.space_6;
-            width: parent.width - Theme.space_6 * 2;
-            height: parent.height - Theme.space_6 * 2;
-            spacing: Theme.space_4;
-            alignment: start;
+        Rectangle {
+            width: Theme.shell_sidebar_width;
+            height: parent.height;
+            border-radius: Theme.radius_2;
+            border-width: Theme.border_width;
+            border-color: Theme.border;
+            background: Theme.panel;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-blur: Theme.surface_shadow_blur;
+            drop-shadow-offset-y: Theme.surface_shadow_offset_y;
 
-            Text {
-                text: @tr("Wert senden");
-                color: Theme.text_primary;
-                font-size: Theme.title_size;
-                font-family: Theme.font_family;
-                font-weight: Theme.title_weight;
-                height: Theme.title_line_height;
-            }
-
-            Text {
-                text: @tr("Geben Sie einen Wert ein, um ihn an den Agenten zu senden.");
-                color: Theme.text_secondary;
-                font-size: Theme.body_size;
-                font-family: Theme.font_family;
-                height: Theme.body_line_height;
-            }
-
-            // agent-id: "main.status"
-            // agent-role: "status"
-            // agent-actions: ""
-            // Plain `Text` has no `agent-id` property; this marker keeps the
-            // agent-api coverage check (scripts/agent-api-check) in sync with
-            // crates/agent-api's "main.status" element.
-            Text {
-                text: @tr("Status: {}", root.status);
-                color: Theme.text_secondary;
-                font-size: Theme.caption_size;
-                font-family: Theme.font_family;
-                accessible-label: @tr("Anwendungsstatus");
-                height: Theme.caption_line_height;
-            }
-
-            if (root.progress >= 0) : Text {
-                text: @tr("Fortschritt: {}%", root.progress);
-                color: Theme.text_secondary;
-                font-size: Theme.caption_size;
-                font-family: Theme.font_family;
-                accessible-label: @tr("Fortschritt des Vorgangs");
-                height: Theme.caption_line_height;
-            }
-
-            input-field := FluentTextField {
-                width: parent.width;
-                label: @tr("Wert");
-                placeholder: @tr("Wert eingeben");
-                value <=> root.input-value;
-                agent-id: "main.input";
-                agent-role: "textbox";
-                agent-actions: "get_value,set_value,focus";
-                label-for-accessibility: @tr("Haupteingabe");
-                edited(value) => {
-                    root.input-changed(value);
-                }
-            }
-
-            file-picker := FluentButton {
-                label: @tr("Datei auswählen");
-                agent-id: "main.file-picker";
-                agent-role: "button";
-                agent-actions: "click,get_value,set_value,focus";
-                clicked => {
-                    root.pick-file();
-                }
-            }
-
-            // agent-id: "main.selected-file"
-            // agent-role: "status"
-            // agent-actions: "get_value"
-            // Plain `Text` has no `agent-id` property; this marker keeps the
-            // agent-api coverage check in sync with the selected path output.
-            Text {
-                width: parent.width;
-                height: Theme.body_line_height * 2;
-                text: root.selected-file == "" ? @tr("Keine Datei ausgewählt") : root.selected-file;
-                color: root.selected-file == "" ? Theme.text_secondary : Theme.text_primary;
-                font-size: Theme.body_size;
-                font-family: Theme.font_family;
-                wrap: word-wrap;
-                accessible-label: @tr("Ausgewählter Dateipfad");
-            }
-
-            HorizontalLayout {
-                width: parent.width;
+            VerticalLayout {
+                x: Theme.space_4;
+                y: Theme.space_4;
+                width: parent.width - Theme.space_4 * 2;
+                height: parent.height - Theme.space_4 * 2;
                 spacing: Theme.space_3;
-                alignment: end;
-                height: Theme.control_height;
+                alignment: start;
 
-                reset-button := FluentButton {
-                    label: @tr("Zurücksetzen");
-                    agent-id: "main.reset";
+                Text {
+                    text: @tr("Notizen");
+                    color: Theme.text_primary;
+                    font-size: Theme.subtitle_size;
+                    font-family: Theme.font_family;
+                    font-weight: Theme.strong_weight;
+                    height: Theme.subtitle_line_height;
+                }
+
+                // agent-id: "notes.list"
+                // agent-role: "list"
+                // agent-actions: "get_value"
+                Text {
+                    text: root.notes-count == 0 ? @tr("Noch keine Notizen") : @tr("{} aktive Notizen", root.notes-count);
+                    color: Theme.text_secondary;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    accessible-label: @tr("Notizliste");
+                    height: Theme.caption_line_height;
+                }
+
+                new-note-button := FluentButton {
+                    width: parent.width;
+                    label: @tr("Neue Notiz");
+                    agent-id: "notes.new";
                     agent-role: "button";
                     agent-actions: "click,focus";
                     clicked => {
-                        root.input-value = "";
-                        root.reset();
+                        root.new-note();
                     }
                 }
 
-                submit-button := FluentButton {
-                    label: @tr("Senden");
-                    primary: true;
-                    disabled: !root.submit-enabled;
-                    agent-id: "main.submit";
+                FluentButton {
+                    width: parent.width;
+                    label: root.note-slot-0-id == "" ? @tr("Leerer Notizplatz") : root.note-slot-0-title;
+                    disabled: root.note-slot-0-id == "";
+                    agent-id: "notes.item.0";
                     agent-role: "button";
-                    agent-actions: "click,focus";
-                    clicked => {
-                        root.submit(root.input-value);
+                    agent-actions: "click";
+                    clicked => { root.select-note(root.note-slot-0-id); }
+                }
+
+                FluentButton {
+                    width: parent.width;
+                    label: root.note-slot-1-id == "" ? @tr("Leerer Notizplatz") : root.note-slot-1-title;
+                    disabled: root.note-slot-1-id == "";
+                    agent-id: "notes.item.1";
+                    agent-role: "button";
+                    agent-actions: "click";
+                    clicked => { root.select-note(root.note-slot-1-id); }
+                }
+
+                FluentButton {
+                    width: parent.width;
+                    label: root.note-slot-2-id == "" ? @tr("Leerer Notizplatz") : root.note-slot-2-title;
+                    disabled: root.note-slot-2-id == "";
+                    agent-id: "notes.item.2";
+                    agent-role: "button";
+                    agent-actions: "click";
+                    clicked => { root.select-note(root.note-slot-2-id); }
+                }
+
+                FluentButton {
+                    width: parent.width;
+                    label: root.note-slot-3-id == "" ? @tr("Leerer Notizplatz") : root.note-slot-3-title;
+                    disabled: root.note-slot-3-id == "";
+                    agent-id: "notes.item.3";
+                    agent-role: "button";
+                    agent-actions: "click";
+                    clicked => { root.select-note(root.note-slot-3-id); }
+                }
+
+                FluentButton {
+                    width: parent.width;
+                    label: root.note-slot-4-id == "" ? @tr("Leerer Notizplatz") : root.note-slot-4-title;
+                    disabled: root.note-slot-4-id == "";
+                    agent-id: "notes.item.4";
+                    agent-role: "button";
+                    agent-actions: "click";
+                    clicked => { root.select-note(root.note-slot-4-id); }
+                }
+            }
+        }
+
+        Rectangle {
+            width: root.width - Theme.page_gutter * 2 - Theme.shell_sidebar_width - Theme.space_6;
+            height: parent.height;
+            border-radius: Theme.radius_2;
+            border-width: Theme.border_width;
+            border-color: Theme.border;
+            background: Theme.panel;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-blur: Theme.surface_shadow_blur;
+            drop-shadow-offset-y: Theme.surface_shadow_offset_y;
+
+            VerticalLayout {
+                x: Theme.space_6;
+                y: Theme.space_6;
+                width: parent.width - Theme.space_6 * 2;
+                height: parent.height - Theme.space_6 * 2;
+                spacing: Theme.space_2;
+                alignment: start;
+
+                Text {
+                    text: root.note-selected ? @tr("Notiz bearbeiten") : @tr("Neue Notiz");
+                    color: Theme.text_primary;
+                    font-size: Theme.title_size;
+                    font-family: Theme.font_family;
+                    font-weight: Theme.title_weight;
+                    height: Theme.title_line_height;
+                }
+
+                Text {
+                    text: @tr("Schreiben, speichern und archivieren Sie lokale Notizen.");
+                    color: Theme.text_secondary;
+                    font-size: Theme.body_size;
+                    font-family: Theme.font_family;
+                    height: Theme.body_line_height;
+                }
+
+                note-title-field := FluentTextField {
+                    width: parent.width;
+                    label: @tr("Titel");
+                    placeholder: @tr("Titel der Notiz");
+                    value <=> root.note-title;
+                    agent-id: "notes.title";
+                    agent-role: "textbox";
+                    agent-actions: "get_value,set_value,focus";
+                    label-for-accessibility: @tr("Notiztitel");
+                    edited(value) => {
+                        root.note-title-changed(value);
                     }
                 }
 
-                cancel-button := FluentButton {
-                    label: @tr("Abbrechen");
-                    disabled: !root.cancel-enabled;
-                    agent-id: "main.cancel";
+                note-body-field := FluentTextField {
+                    width: parent.width;
+                    label: @tr("Inhalt");
+                    placeholder: @tr("Inhalt der Notiz");
+                    value <=> root.note-body;
+                    agent-id: "notes.body";
+                    agent-role: "textbox";
+                    agent-actions: "get_value,set_value,focus";
+                    label-for-accessibility: @tr("Notizinhalt");
+                    edited(value) => {
+                        root.note-body-changed(value);
+                    }
+                }
+
+                HorizontalLayout {
+                    width: parent.width;
+                    spacing: Theme.space_3;
+                    alignment: end;
+                    height: Theme.control_height;
+
+                    delete-note-button := FluentButton {
+                        label: @tr("Löschen");
+                        destructive: true;
+                        disabled: !root.note-selected;
+                        agent-id: "notes.delete";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => { root.delete-note(); }
+                    }
+
+                    archive-note-button := FluentButton {
+                        label: @tr("Archivieren");
+                        disabled: !root.note-selected;
+                        agent-id: "notes.archive";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => { root.archive-note(); }
+                    }
+
+                    save-note-button := FluentButton {
+                        label: @tr("Speichern");
+                        primary: true;
+                        disabled: !root.note-save-enabled;
+                        agent-id: "notes.save";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => { root.save-note(); }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width;
+                    height: Theme.border_width;
+                    background: Theme.border;
+                }
+
+                Text {
+                    text: @tr("Agent-Demo");
+                    color: Theme.text_primary;
+                    font-size: Theme.subtitle_size;
+                    font-family: Theme.font_family;
+                    font-weight: Theme.strong_weight;
+                    height: Theme.subtitle_line_height;
+                }
+
+                // agent-id: "main.status"
+                // agent-role: "status"
+                // agent-actions: ""
+                Text {
+                    text: @tr("Status: {}", root.status);
+                    color: Theme.text_secondary;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    accessible-label: @tr("Anwendungsstatus");
+                    height: Theme.caption_line_height;
+                }
+
+                if (root.progress >= 0) : Text {
+                    text: @tr("Fortschritt: {}%", root.progress);
+                    color: Theme.text_secondary;
+                    font-size: Theme.caption_size;
+                    font-family: Theme.font_family;
+                    accessible-label: @tr("Fortschritt des Vorgangs");
+                    height: Theme.caption_line_height;
+                }
+
+                input-field := FluentTextField {
+                    width: parent.width;
+                    label: @tr("Wert");
+                    placeholder: @tr("Wert eingeben");
+                    value <=> root.input-value;
+                    agent-id: "main.input";
+                    agent-role: "textbox";
+                    agent-actions: "get_value,set_value,focus";
+                    label-for-accessibility: @tr("Haupteingabe");
+                    edited(value) => {
+                        root.input-changed(value);
+                    }
+                }
+
+                file-picker := FluentButton {
+                    label: @tr("Datei auswählen");
+                    agent-id: "main.file-picker";
                     agent-role: "button";
-                    agent-actions: "click,focus";
+                    agent-actions: "click,get_value,set_value,focus";
                     clicked => {
-                        root.cancel();
+                        root.pick-file();
+                    }
+                }
+
+                // agent-id: "main.selected-file"
+                // agent-role: "status"
+                // agent-actions: "get_value"
+                Text {
+                    width: parent.width;
+                    height: Theme.body_line_height * 2;
+                    text: root.selected-file == "" ? @tr("Keine Datei ausgewählt") : root.selected-file;
+                    color: root.selected-file == "" ? Theme.text_secondary : Theme.text_primary;
+                    font-size: Theme.body_size;
+                    font-family: Theme.font_family;
+                    wrap: word-wrap;
+                    accessible-label: @tr("Ausgewählter Dateipfad");
+                }
+
+                HorizontalLayout {
+                    width: parent.width;
+                    spacing: Theme.space_3;
+                    alignment: end;
+                    height: Theme.control_height;
+
+                    reset-button := FluentButton {
+                        label: @tr("Zurücksetzen");
+                        agent-id: "main.reset";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => {
+                            root.input-value = "";
+                            root.reset();
+                        }
+                    }
+
+                    submit-button := FluentButton {
+                        label: @tr("Senden");
+                        primary: true;
+                        disabled: !root.submit-enabled;
+                        agent-id: "main.submit";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => {
+                            root.submit(root.input-value);
+                        }
+                    }
+
+                    cancel-button := FluentButton {
+                        label: @tr("Abbrechen");
+                        disabled: !root.cancel-enabled;
+                        agent-id: "main.cancel";
+                        agent-role: "button";
+                        agent-actions: "click,focus";
+                        clicked => {
+                            root.cancel();
+                        }
                     }
                 }
             }
