@@ -46,7 +46,7 @@ jobs:
           APP_VERSION: ${{ steps.package-version.outputs.version }}
         run: |
           set -euo pipefail
-          bundle="target/release/bundle/Slint Agent Desktop.app"
+          bundle="target/release/bundle/slint-demo.app"
           rm -rf "target/release/bundle"
           mkdir -p "${bundle}/Contents/MacOS"
           cp target/release/desktop "${bundle}/Contents/MacOS/desktop"
@@ -57,9 +57,9 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>CFBundleName</key>
-            <string>Slint Agent Desktop</string>
+            <string>slint-demo</string>
             <key>CFBundleDisplayName</key>
-            <string>Slint Agent Desktop</string>
+            <string>slint-demo</string>
             <key>CFBundleIdentifier</key>
             <string>dev.slint-agent.desktop</string>
             <key>CFBundleExecutable</key>
@@ -80,9 +80,18 @@ jobs:
           </plist>
           PLIST
 
+      - name: Archive macOS app bundle (preserve permissions)
+        run: |
+          set -euo pipefail
+          cd target/release/bundle
+          # actions/upload-artifact zips directories without preserving the
+          # executable bit, which breaks the bundled binary (Finder falls
+          # back to opening it as a plain folder). tar preserves permissions.
+          tar -czf slint-demo-macos-arm64.tar.gz "slint-demo.app"
+
       - name: Upload macOS app bundle
         uses: actions/upload-artifact@v4
         with:
-          name: slint-agent-desktop-macos-arm64
-          path: target/release/bundle/Slint Agent Desktop.app
+          name: slint-demo-macos-arm64
+          path: target/release/bundle/slint-demo-macos-arm64.tar.gz
           if-no-files-found: error

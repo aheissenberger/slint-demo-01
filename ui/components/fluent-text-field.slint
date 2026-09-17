@@ -10,7 +10,7 @@ export component FluentTextField inherits Rectangle {
     in property <string> label-for-accessibility: "";
     callback edited(string);
 
-    border-width: 0px;
+    border-width: Theme.border_width_none;
     background: transparent;
     height: Theme.field_label_height + Theme.space_2 + Theme.field_height;
     min-width: 240px;
@@ -42,9 +42,9 @@ export component FluentTextField inherits Rectangle {
             width: root.width;
             height: Theme.field_height;
             border-radius: Theme.radius_1;
-            border-width: invalid ? Theme.border_width * 2 : Theme.border_width;
+            border-width: root.invalid ? Theme.focus_border_width : Theme.border_width;
             border-color: root.invalid ? Theme.error : Theme.border;
-            background: Theme.panel;
+            background: root.disabled ? Theme.panel_disabled : Theme.panel;
             clip: true;
 
             input := TextInput {
@@ -58,13 +58,13 @@ export component FluentTextField inherits Rectangle {
                 font-family: Theme.font_family;
                 accessible-role: text-input;
                 accessible-label: root.label-for-accessibility != "" ? root.label-for-accessibility : root.label;
-                accessible-description: root.agent-id;
+                accessible-description: root.invalid ? root.agent-id + ", invalid value" : root.agent-id;
                 edited => { root.edited(input.text); }
             }
 
             if (root.value == "" && root.placeholder != "") : Text {
                 text: root.placeholder;
-                color: Theme.text_secondary;
+                color: Theme.text_placeholder;
                 font-size: Theme.body_size;
                 x: Theme.space_2;
                 width: field.width - Theme.space_2 * 2;
@@ -75,8 +75,8 @@ export component FluentTextField inherits Rectangle {
 
             states [
                 focus when input.has-focus : {
-                    border-color: Theme.focus;
-                    border-width: Theme.border_width * 2;
+                    border-color: Theme.focus_ring;
+                    border-width: Theme.focus_border_width;
                 }
             ]
         }

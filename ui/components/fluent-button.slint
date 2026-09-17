@@ -13,8 +13,8 @@ export component FluentButton inherits Rectangle {
     border-width: Theme.border_width;
     height: Theme.control_height;
     min-width: Theme.button_min_width;
-    background: primary ? Theme.accent : (destructive ? Theme.destructive_surface : Theme.panel);
-    border-color: primary ? Theme.accent : Theme.border;
+    background: disabled ? Theme.panel_disabled : (primary ? Theme.accent : (destructive ? Theme.destructive_surface : Theme.panel));
+    border-color: disabled ? Theme.border : (primary ? Theme.accent : Theme.border);
     opacity: disabled ? Theme.disabled_opacity : 1;
     accessible-role: button;
     accessible-label: root.label;
@@ -28,8 +28,8 @@ export component FluentButton inherits Rectangle {
             background: primary ? Theme.accent_hover : (destructive ? Theme.destructive_surface_hover : Theme.panel_alt);
         }
         focus when focus-scope.has-focus : {
-            border-color: Theme.focus;
-            border-width: 2px;
+            border-color: Theme.focus_ring;
+            border-width: Theme.focus_border_width;
         }
     ]
 
@@ -51,7 +51,7 @@ export component FluentButton inherits Rectangle {
 
         Text {
             text: root.label;
-            color: primary || destructive ? Theme.accent_foreground : Theme.text_primary;
+            color: disabled ? Theme.text_disabled : (primary || destructive ? Theme.accent_foreground : Theme.text_primary);
             font-size: Theme.body_size;
             font-family: Theme.font_family;
             font-weight: Theme.body_weight;
