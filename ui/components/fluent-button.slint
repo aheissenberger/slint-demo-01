@@ -11,6 +11,10 @@ export component FluentButton inherits Rectangle {
     in property <string> variant: "standard";
     callback clicked;
 
+    public function focus-control() {
+        focus-scope.focus();
+    }
+
     border-radius: Theme.radius_1;
     border-width: Theme.border_width;
     height: Theme.control_height;

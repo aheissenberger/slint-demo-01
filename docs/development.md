@@ -29,15 +29,19 @@ The DevContainer includes the pinned `actionlint` release used by
 The development image also installs the pinned `cargo-watch` version used by
 the desktop launcher; Windows packaging pins `cargo-wix` in CI for
 reproducible installer builds. The supported macOS and Windows workflows also
-run the feature-complete test compilation and pinned `cargo-audit` dependency
-scan; Linux is used only for development tooling and is not a release build
-target.
+run formatting, strict feature-complete linting, the complete test suite, and
+a pinned `cargo-audit` dependency scan. Windows is the primary release target:
+its workflow additionally builds, validates, installs, and uninstalls the MSI
+on a native Windows runner. Linux is used only for development tooling and is
+not a release build target.
 
 The agent API contract is derived from the Slint source files. The
 `slint-contract` helper compiles `ui/app.slint` with the official Slint
 interpreter, then extracts `agent-id` declarations from the Slint files before
 `scripts/agent-api-check` compares them with the Rust semantic API. This keeps
 the `.slint` files authoritative without relying on a regex-only UI parser.
+The end-to-end shell checks use structured `jq` assertions against the JSON
+agent responses, rather than matching serialized field order with text tools.
 
 The desktop process also starts the local agent API on `127.0.0.1:8080`.
 The container starts Xvfb, Openbox, x11vnc, and websockify automatically;
@@ -115,7 +119,9 @@ as the installer's license dialog content. Regenerate the WiX template with
 the Start Menu shortcut edit, German language settings, German license text,
 and the `$(sys.SOURCEFILEDIR)License.rtf` source paths afterward since
 `init --force` overwrites `main.wxs`.
-Run it manually from the Actions tab, or let it run on pushes to `main` and
-pull requests.
+The Windows workflow runs on pushes to `main` and pull requests. The macOS
+workflow is a secondary verification build for those events and creates only
+unsigned inspection artifacts; it signs, notarizes, and publishes a
+Gatekeeper-compatible distributable only for version tags matching `v*`.
 The Rust toolchain is pinned in `rust-toolchain.toml`; update that file and the
 matching DevContainer installation command together when upgrading Rust.

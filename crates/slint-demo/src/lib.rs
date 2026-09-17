@@ -1,20 +1,20 @@
 #[cfg(feature = "agent-api")]
 use agent_api::AgentApi;
-#[cfg(feature = "agent-api")]
 use application::{AppAction, AppState};
-#[cfg(feature = "agent-api")]
 use infrastructure::initialize_repository;
 use slint::ComponentHandle;
-#[cfg(feature = "agent-api")]
 use slint::SharedString;
-#[cfg(feature = "agent-api")]
 use std::{sync::Arc, thread};
 
 slint::include_modules!();
 
-#[cfg(feature = "agent-api")]
 fn apply_state(ui: &MainWindow, state: AppState) {
-    ui.set_status(state.status.to_string().into());
+    let status = state.error_message.as_deref().map_or_else(
+        || state.status.to_string(),
+        |error| format!("Fehler: {error}"),
+    );
+    ui.set_status(status.into());
+    ui.set_submit_enabled(state.can_submit());
     if ui.get_input_value().as_str() != state.input {
         ui.set_input_value(state.input.into());
     }
@@ -28,55 +28,62 @@ fn apply_state(ui: &MainWindow, state: AppState) {
             ui.invoke_hide_about();
         }
     }
+    if state.file_picker_requested {
+        ui.invoke_show_native_file_picker();
+    }
+    if let Some(element_id) = state.focused_element {
+        ui.invoke_focus_control(element_id.into());
+    }
 }
 
-#[cfg_attr(not(feature = "agent-api"), derive(Default))]
 pub struct DesktopApp {
+    store: Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
     #[cfg(feature = "agent-api")]
-    agent_api: Arc<AgentApi<infrastructure::MemoryRepository>>,
+    agent_api: AgentApi<infrastructure::MemoryRepository>,
 }
 
-#[cfg(feature = "agent-api")]
-#[allow(clippy::derivable_impls)]
 impl Default for DesktopApp {
     fn default() -> Self {
         let repository = initialize_repository();
+        let store = Arc::new(application::AppStateStore::new(repository.build_service()));
         Self {
-            agent_api: Arc::new(AgentApi::new(repository.build_service())),
+            #[cfg(feature = "agent-api")]
+            agent_api: AgentApi::from_store(Arc::clone(&store)),
+            store,
         }
     }
 }
 
 impl DesktopApp {
     pub fn new() -> Self {
-        #[cfg(feature = "agent-api")]
-        return Self::default();
-        #[cfg(not(feature = "agent-api"))]
-        Self {}
+        Self::default()
     }
 
     pub fn run() {
-        #[cfg(feature = "agent-api")]
         let app = Self::new();
         let ui = MainWindow::new().unwrap();
         ui.set_app_version(env!("CARGO_PKG_VERSION").into());
+        Self::configure_store(&ui, &app.store);
         #[cfg(feature = "agent-api")]
-        Self::configure_agent_api(&ui, &app);
-        #[cfg(not(feature = "agent-api"))]
-        Self::configure_file_picker(&ui);
+        Self::start_agent_api(&app);
         ui.run().unwrap();
     }
 
     #[cfg(feature = "agent-api")]
-    fn configure_agent_api(ui: &MainWindow, app: &Self) {
-        let api = Arc::clone(&app.agent_api);
+    fn start_agent_api(app: &Self) {
+        let api = app.agent_api.clone();
         thread::spawn(move || {
-            if let Err(error) = (*api).clone().serve("127.0.0.1:8080") {
+            if let Err(error) = api.serve("127.0.0.1:8080") {
                 tracing::error!(%error, "agent API stopped");
             }
         });
+    }
 
-        let store = app.agent_api.store();
+    fn configure_store(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
         let updates = store.subscribe().expect("state subscription");
         apply_state(
             ui,
@@ -86,11 +93,12 @@ impl DesktopApp {
         Self::configure_input(ui, &store);
         Self::configure_reset(ui, &store);
         Self::configure_file_picker(ui, &store);
+        Self::configure_native_file_picker(ui, &store);
         Self::configure_about(ui, &store);
         Self::configure_submit(ui, &store);
+        Self::configure_focus(ui, &store);
     }
 
-    #[cfg(feature = "agent-api")]
     fn start_state_sync(ui: &MainWindow, updates: std::sync::mpsc::Receiver<AppState>) {
         let weak = ui.as_weak();
         thread::spawn(move || {
@@ -105,7 +113,6 @@ impl DesktopApp {
         });
     }
 
-    #[cfg(feature = "agent-api")]
     fn configure_input(
         ui: &MainWindow,
         store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
@@ -120,7 +127,6 @@ impl DesktopApp {
         });
     }
 
-    #[cfg(feature = "agent-api")]
     fn configure_reset(
         ui: &MainWindow,
         store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
@@ -133,7 +139,6 @@ impl DesktopApp {
         });
     }
 
-    #[cfg(feature = "agent-api")]
     fn configure_about(
         ui: &MainWindow,
         store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
@@ -151,7 +156,6 @@ impl DesktopApp {
         });
     }
 
-    #[cfg(feature = "agent-api")]
     fn configure_submit(
         ui: &MainWindow,
         store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
@@ -159,36 +163,50 @@ impl DesktopApp {
         let store = Arc::clone(store);
         ui.on_submit(move |value: SharedString| {
             let _ = value;
-            if let Err(error) = store.dispatch(AppAction::Submit) {
+            if let Err(error) = store.submit() {
                 tracing::error!(%error, "failed to submit value");
             }
         });
     }
 
-    #[cfg(feature = "agent-api")]
-    fn configure_file_picker(
+    fn configure_focus(
         ui: &MainWindow,
         store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
     ) {
-        let weak = ui.as_weak();
         let store = Arc::clone(store);
-        ui.on_pick_file(move || {
-            if let Err(error) = store.dispatch(AppAction::SelectDevelopmentFile) {
-                if let Some(ui) = weak.upgrade() {
-                    ui.set_status(format!("Fehler: {error}").into());
-                }
+        ui.on_focus_applied(move || {
+            if let Err(error) = store.dispatch(AppAction::ClearFocus) {
+                tracing::error!(%error, "failed to clear focus request");
             }
         });
     }
 
-    #[cfg(not(feature = "agent-api"))]
-    fn configure_file_picker(ui: &MainWindow) {
-        let weak = ui.as_weak();
+    fn configure_file_picker(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
         ui.on_pick_file(move || {
+            if let Err(error) = store.dispatch(AppAction::RequestFilePicker) {
+                tracing::error!(%error, "failed to request file selection");
+            }
+        });
+    }
+
+    fn configure_native_file_picker(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_show_native_file_picker(move || {
             if let Some(path) = rfd::FileDialog::new().pick_file() {
-                if let Some(ui) = weak.upgrade() {
-                    ui.set_selected_file(path.to_string_lossy().into_owned().into());
+                if let Err(error) = store.dispatch(AppAction::SelectFile {
+                    path: path.to_string_lossy().into_owned(),
+                }) {
+                    tracing::error!(%error, "failed to select file");
                 }
+            } else if let Err(error) = store.dispatch(AppAction::CancelFileSelection) {
+                tracing::error!(%error, "failed to cancel file selection");
             }
         });
     }

@@ -151,7 +151,8 @@ reused.
 {
   "screen": "main",
   "status": "bereit",
-  "busy": false
+  "busy": false,
+  "error": null
 }
 ```
 
@@ -161,7 +162,7 @@ reused.
   "screen": "main",
   "elements": [
     { "id": "main.input", "role": "textbox", "enabled": true, "value": "" },
-    { "id": "main.file-picker", "role": "button", "enabled": true, "value": "/workspace/Cargo.toml", "accessible_label": "Datei auswählen" },
+    { "id": "main.file-picker", "role": "button", "enabled": true, "value": "", "accessible_label": "Datei auswählen" },
     { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Ausgewählter Dateipfad" },
     { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Senden" },
     { "id": "main.status", "role": "status", "enabled": true, "value": "bereit", "accessible_label": "Anwendungsstatus" },

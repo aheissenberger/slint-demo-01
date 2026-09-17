@@ -12,6 +12,10 @@ export component FluentTextField inherits Rectangle {
     in property <string> label-for-accessibility: "";
     callback edited(string);
 
+    public function focus-control() {
+        input.focus();
+    }
+
     border-width: Theme.border_width_none;
     background: transparent;
     height: Theme.field_label_height + Theme.space_2 + Theme.field_height;

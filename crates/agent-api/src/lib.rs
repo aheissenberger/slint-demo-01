@@ -11,6 +11,7 @@ pub struct AgentStateResponse {
     pub screen: String,
     pub status: String,
     pub busy: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,7 +91,7 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
         "about.close",
         UiComponentMetadata {
             role: "button",
-            actions: &["click", "focus"],
+            actions: &["click"],
         },
     ),
 ];
@@ -163,9 +164,11 @@ where
     S: application::AppRepository + Clone + Send + Sync + 'static,
 {
     pub fn new(service: AppService<S>) -> Self {
-        Self {
-            store: Arc::new(AppStateStore::new(service)),
-        }
+        Self::from_store(Arc::new(AppStateStore::new(service)))
+    }
+
+    pub fn from_store(store: Arc<AppStateStore<S>>) -> Self {
+        Self { store }
     }
 
     pub fn store(&self) -> Arc<AppStateStore<S>> {
@@ -179,30 +182,32 @@ where
             screen: state.screen.to_string(),
             status: state.status.to_string(),
             busy: state.busy,
+            error: state.error_message,
         })
     }
 
     #[instrument(name = "agent.inspect_ui", skip(self), fields(component = "agent-api"))]
     pub fn inspect_ui(&self) -> Result<UiInspectionResponse, ApplicationError> {
         let state = self.store.current_state()?;
+        let main_controls_enabled = !state.about_open;
         let mut elements = vec![
             element(
                 "main.input",
-                true,
+                main_controls_enabled,
                 Some(state.input.clone()),
                 "Haupteingabe",
             ),
             element(
                 "main.submit",
-                !state.input.trim().is_empty() && !state.busy,
+                main_controls_enabled && state.can_submit(),
                 None,
                 "Senden",
             ),
-            element("main.reset", true, None, "Zurücksetzen"),
+            element("main.reset", main_controls_enabled, None, "Zurücksetzen"),
             element(
                 "main.file-picker",
-                true,
-                Some(state.development_file_path.clone()),
+                main_controls_enabled,
+                Some(state.selected_file.clone()),
                 "Datei auswählen",
             ),
             element(
@@ -214,10 +219,13 @@ where
             element(
                 "main.status",
                 true,
-                Some(state.status.to_string()),
+                Some(state.error_message.as_deref().map_or_else(
+                    || state.status.to_string(),
+                    |error| format!("Fehler: {error}"),
+                )),
                 "Anwendungsstatus",
             ),
-            element("help.about", true, None, "Über"),
+            element("help.about", main_controls_enabled, None, "Über"),
         ];
         if state.about_open {
             elements.push(element(
@@ -250,11 +258,10 @@ where
     ) -> Result<String, ApplicationError> {
         trace!(command = %request.command, "received command");
         let command = match request.command.as_str() {
-            "submit" => AppAction::Submit,
+            "submit" => return Ok(self.store.submit()?.message),
             "reset" => AppAction::Reset,
             "open_about" => AppAction::OpenAbout,
             "close_about" => AppAction::CloseAbout,
-            "select_development_file" => AppAction::SelectDevelopmentFile,
             "set_input" => {
                 let value = request
                     .arguments
@@ -264,15 +271,14 @@ where
                     .unwrap_or_default();
                 AppAction::SetInput { value }
             }
-            "set_development_file_path" => {
+            "select_file" => {
                 let value = request
                     .arguments
                     .get("path")
-                    .or_else(|| request.arguments.get("value"))
                     .and_then(|value| value.as_str())
                     .map(str::to_string)
                     .unwrap_or_default();
-                AppAction::SetDevelopmentFilePath { path: value }
+                AppAction::SelectFile { path: value }
             }
             _ => {
                 return Err(ApplicationError::InvalidPayload(format!(
@@ -293,10 +299,9 @@ where
         &self,
         action: AgentActionRequest,
     ) -> Result<String, ApplicationError> {
+        self.ensure_action_is_enabled(&action)?;
         match action.action.as_str() {
-            "click" if action.id == "main.submit" => {
-                Ok(self.store.dispatch(AppAction::Submit)?.message)
-            }
+            "click" if action.id == "main.submit" => Ok(self.store.submit()?.message),
             "set_value" if action.id == "main.input" => Ok(self
                 .store
                 .dispatch(AppAction::SetInput {
@@ -308,16 +313,15 @@ where
             }
             "set_value" if action.id == "main.file-picker" => Ok(self
                 .store
-                .dispatch(AppAction::SetDevelopmentFilePath {
+                .dispatch(AppAction::SelectFile {
                     path: action.value.unwrap_or_default(),
                 })?
                 .message),
-            "click" if action.id == "main.file-picker" => Ok(self
-                .store
-                .dispatch(AppAction::SelectDevelopmentFile)?
-                .message),
+            "click" if action.id == "main.file-picker" => {
+                Ok(self.store.dispatch(AppAction::RequestFilePicker)?.message)
+            }
             "get_value" if action.id == "main.file-picker" => {
-                Ok(self.store.current_state()?.development_file_path)
+                Ok(self.store.current_state()?.selected_file)
             }
             "get_value" if action.id == "main.selected-file" => {
                 Ok(self.store.current_state()?.selected_file)
@@ -332,14 +336,61 @@ where
             "focus"
                 if action.id == "main.input"
                     || action.id == "main.submit"
+                    || action.id == "main.reset"
                     || action.id == "main.file-picker" =>
             {
-                Ok(format!("{} fokussiert", action.id))
+                Ok(self
+                    .store
+                    .dispatch(AppAction::Focus {
+                        element_id: action.id,
+                    })?
+                    .message)
             }
             _ => Err(ApplicationError::InvalidPayload(format!(
                 "nicht unterstützte Aktion oder unbekanntes Element: {} {}",
                 action.action, action.id
             ))),
+        }
+    }
+
+    fn ensure_action_is_enabled(
+        &self,
+        action: &AgentActionRequest,
+    ) -> Result<(), ApplicationError> {
+        if !matches!(action.action.as_str(), "click" | "set_value" | "focus") {
+            return Ok(());
+        }
+
+        let state = self.store.current_state()?;
+        if state.about_open
+            && matches!(
+                action.id.as_str(),
+                "main.input" | "main.submit" | "main.reset" | "main.file-picker" | "help.about"
+            )
+        {
+            return Err(ApplicationError::InvalidPayload(format!(
+                "Element ist deaktiviert: {}",
+                action.id
+            )));
+        }
+        if action.id == "about.close" && !state.about_open {
+            return Err(ApplicationError::InvalidPayload(
+                "Element ist nicht sichtbar: about.close".into(),
+            ));
+        }
+
+        let enabled = match action.id.as_str() {
+            "main.submit" => state.can_submit(),
+            "main.reset" | "main.file-picker" | "help.about" | "about.close" => true,
+            _ => return Ok(()),
+        };
+        if enabled {
+            Ok(())
+        } else {
+            Err(ApplicationError::InvalidPayload(format!(
+                "Element ist deaktiviert: {}",
+                action.id
+            )))
         }
     }
 

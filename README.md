@@ -59,8 +59,9 @@ See the architecture and docs folders for the intended production structure.
 
 ## macOS distribution builds
 
-The macOS workflow produces a signed, notarized, and stapled application for
-pushes to `main` and manual runs. These steps are required for an application
+The macOS workflow is a secondary verification build for pull requests and
+pushes to `main`. It produces a signed, notarized, and stapled application only
+for version tags matching `v*`. These steps are required for an application
 downloaded from GitHub to pass Gatekeeper; an unsigned application is not a
 release artifact.
 

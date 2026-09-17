@@ -6,12 +6,15 @@ import { Theme } from "./theme/theme.slint";
 export component MainWindow inherits Window {
     in property <string> status: "bereit";
     in property <string> app-version: "0.1.0";
+    in property <bool> submit-enabled: false;
     in-out property <string> input-value: "";
     in-out property <string> selected-file: "";
     out property <bool> about-visible: about-popup.is-open;
     callback submit(string);
     callback input-changed(string);
     callback pick-file();
+    callback show-native-file-picker();
+    callback focus-applied();
     callback reset();
     callback about-visibility-changed(bool);
 
@@ -23,6 +26,19 @@ export component MainWindow inherits Window {
     public function hide-about() {
         about-popup.close();
         root.about-visibility-changed(false);
+    }
+
+    public function focus-control(element-id: string) {
+        if (element-id == "main.input") {
+            input-field.focus-control();
+        } else if (element-id == "main.file-picker") {
+            file-picker.focus-control();
+        } else if (element-id == "main.reset") {
+            reset-button.focus-control();
+        } else if (element-id == "main.submit") {
+            submit-button.focus-control();
+        }
+        root.focus-applied();
     }
 
     title: "Slint Agent Desktop";
@@ -173,7 +189,7 @@ export component MainWindow inherits Window {
                 height: Theme.caption_line_height;
             }
 
-            FluentTextField {
+            input-field := FluentTextField {
                 width: parent.width;
                 label: "Wert";
                 placeholder: "Wert eingeben";
@@ -187,7 +203,7 @@ export component MainWindow inherits Window {
                 }
             }
 
-            FluentButton {
+            file-picker := FluentButton {
                 label: "Datei auswählen";
                 agent-id: "main.file-picker";
                 agent-role: "button";
@@ -219,7 +235,7 @@ export component MainWindow inherits Window {
                 alignment: end;
                 height: Theme.control_height;
 
-                FluentButton {
+                reset-button := FluentButton {
                     label: "Zurücksetzen";
                     agent-id: "main.reset";
                     agent-role: "button";
@@ -230,10 +246,10 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                FluentButton {
+                submit-button := FluentButton {
                     label: "Senden";
                     primary: true;
-                    disabled: root.input-value == "";
+                    disabled: !root.submit-enabled;
                     agent-id: "main.submit";
                     agent-role: "button";
                     agent-actions: "click,focus";

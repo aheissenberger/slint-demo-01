@@ -21,6 +21,26 @@ impl AppId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmissionValue(String);
+
+impl SubmissionValue {
+    pub fn new(value: impl Into<String>) -> Result<Self, DomainError> {
+        let value = value.into().trim().to_string();
+        if value.is_empty() {
+            return Err(DomainError::EmptyValue);
+        }
+        if value.len() > 4096 {
+            return Err(DomainError::ValueTooLong);
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppSettings {
     pub app_name: String,
     pub server_url: String,
@@ -54,6 +74,8 @@ pub enum DomainError {
     InvalidState,
     #[error("Wert darf nicht leer sein")]
     EmptyValue,
+    #[error("Wert überschreitet 4096 Zeichen")]
+    ValueTooLong,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -105,6 +127,15 @@ mod tests {
             "ungültige Anwendungskennung"
         );
         assert_eq!(AppId::new("demo").unwrap().as_str(), "demo");
+    }
+
+    #[test]
+    fn submission_value_is_trimmed_and_validated() {
+        assert_eq!(SubmissionValue::new(" Test ").unwrap().as_str(), "Test");
+        assert!(matches!(
+            SubmissionValue::new(" "),
+            Err(DomainError::EmptyValue)
+        ));
     }
 
     #[test]
