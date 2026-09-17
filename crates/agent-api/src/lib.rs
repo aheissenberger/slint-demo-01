@@ -12,6 +12,7 @@ pub struct AgentStateResponse {
     pub screen: String,
     pub status: String,
     pub busy: bool,
+    pub progress: Option<u8>,
     pub error: Option<String>,
     pub theme_mode: String,
 }
@@ -42,6 +43,13 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
     ),
     (
         "main.submit",
+        UiComponentMetadata {
+            role: "button",
+            actions: &["click", "focus"],
+        },
+    ),
+    (
+        "main.cancel",
         UiComponentMetadata {
             role: "button",
             actions: &["click", "focus"],
@@ -226,6 +234,7 @@ where
             screen: state.screen().to_string(),
             status: state.status.to_string(),
             busy: state.busy,
+            progress: state.progress,
             error: state.error_message,
             theme_mode: state.theme_mode.as_str().to_string(),
         })
@@ -247,6 +256,12 @@ where
                 main_controls_enabled && state.can_submit(),
                 None,
                 "Senden",
+            ),
+            element(
+                "main.cancel",
+                state.busy && main_controls_enabled,
+                None,
+                "Abbrechen",
             ),
             element("main.reset", main_controls_enabled, None, "Zurücksetzen"),
             element(
@@ -332,6 +347,7 @@ where
         trace!(command = %request.command, "received command");
         let command = match request.command.as_str() {
             "submit" => return Ok(self.store.submit()?.message),
+            "cancel" => return Ok(self.store.cancel_submission()?.message),
             "reset" => AppAction::Reset,
             "open_about" => AppAction::OpenAbout,
             "close_about" => AppAction::CloseAbout,
@@ -373,6 +389,7 @@ where
         self.ensure_action_is_enabled(&action)?;
         match action.action.as_str() {
             "click" if action.id == "main.submit" => Ok(self.store.submit()?.message),
+            "click" if action.id == "main.cancel" => Ok(self.store.cancel_submission()?.message),
             "set_value" if action.id == "main.input" => Ok(self
                 .store
                 .dispatch(AppAction::SetInput {
@@ -432,7 +449,8 @@ where
                 if action.id == "main.input"
                     || action.id == "main.submit"
                     || action.id == "main.reset"
-                    || action.id == "main.file-picker" =>
+                    || action.id == "main.file-picker"
+                    || action.id == "main.cancel" =>
             {
                 Ok(self
                     .store
@@ -462,6 +480,7 @@ where
                 action.id.as_str(),
                 "main.input"
                     | "main.submit"
+                    | "main.cancel"
                     | "main.reset"
                     | "main.file-picker"
                     | "file.settings"
@@ -494,6 +513,7 @@ where
 
         let enabled = match action.id.as_str() {
             "main.submit" => state.can_submit(),
+            "main.cancel" => state.busy,
             "main.reset"
             | "main.file-picker"
             | "file.settings"

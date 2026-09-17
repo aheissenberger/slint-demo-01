@@ -53,6 +53,28 @@ noVNC is available at `http://localhost:6080/vnc.html`. Use
 machine-readable diagnostics. Docker and all compilation remain inside the
 container; the host only needs Docker Desktop, VS Code, and Dev Containers.
 
+## Desktop-Laufzeitdaten
+
+Die Desktop-Anwendung verwendet das Betriebssystemdatenverzeichnis von
+`com/aheissenberger/slint-demo`: unter Linux typischerweise
+`~/.local/share/slint-demo`, unter macOS
+`~/Library/Application Support/com.aheissenberger.slint-demo` und unter
+Windows `%LOCALAPPDATA%\aheissenberger\slint-demo\data`. Darin liegen getrennt
+von den fachlichen Anwendungsdaten die Laufzeitdateien unter `runtime/`:
+
+- `instance.lock` stellt sicher, dass nur eine Desktop-Instanz gleichzeitig
+  läuft. Ein zweiter Start beendet sich ohne eine weitere Benutzeroberfläche.
+- `window-state.json` speichert Größe und Position des Hauptfensters. Auf
+  Wayland kann die Fensterverwaltung das Wiederherstellen der Position
+  ablehnen; die Größe wird weiterhin wiederhergestellt.
+
+Beim Schließen wird ein laufender Übermittlungsvorgang über denselben
+kooperativen Abbruchpfad wie die Schaltfläche **Abbrechen** beendet. Erfolgreich
+abgeschlossene oder fehlgeschlagene Übermittlungen erzeugen eine native
+Systembenachrichtigung. Falls der Benachrichtigungsdienst des Betriebssystems
+nicht verfügbar ist, wird der Fehler strukturiert protokolliert, ohne den
+Anwendungsvorgang zu verändern.
+
 The local API accepts bounded HTTP/1.1 requests only: headers are limited to
 8 KiB, JSON request bodies to 8 KiB, and individual reads and writes time out
 after five seconds. It returns explicit `400` or `413` JSON errors for invalid

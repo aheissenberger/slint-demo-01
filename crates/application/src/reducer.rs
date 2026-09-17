@@ -19,6 +19,7 @@ pub struct AppState {
     pub status: AppStatus,
     pub error_message: Option<String>,
     pub busy: bool,
+    pub progress: Option<u8>,
     pub active_dialog: Option<ActiveDialog>,
     pub theme_mode: ThemeMode,
 }
@@ -32,6 +33,7 @@ impl AppState {
             status: AppStatus::Ready,
             error_message: None,
             busy: false,
+            progress: None,
             active_dialog: None,
             theme_mode: ThemeMode::System,
         }
@@ -77,9 +79,11 @@ impl AppState {
             }
             AppAction::RequestFilePicker => Ok("Dateiauswahl geöffnet".to_string()),
             AppAction::CancelFileSelection => Ok("Dateiauswahl abgebrochen".to_string()),
+            AppAction::CancelSubmission => Ok("Vorgang wird abgebrochen".to_string()),
             AppAction::Reset => {
                 self.input.clear();
                 self.status = AppStatus::Ready;
+                self.progress = None;
                 self.busy = false;
                 self.error_message = None;
                 self.active_dialog = None;
@@ -116,21 +120,31 @@ impl AppState {
         match event {
             AppEvent::SubmissionStarted => {
                 self.busy = true;
+                self.progress = Some(0);
                 self.status = AppStatus::Busy;
                 self.error_message = None;
                 "wird ausgeführt".to_string()
             }
             AppEvent::SubmissionSucceeded => {
                 self.busy = false;
+                self.progress = Some(100);
                 self.status = AppStatus::Success;
                 self.error_message = None;
                 "Befehl ausgeführt".to_string()
             }
             AppEvent::SubmissionFailed { message } => {
                 self.busy = false;
+                self.progress = None;
                 self.status = AppStatus::Error;
                 self.error_message = Some(message.clone());
                 message.clone()
+            }
+            AppEvent::SubmissionCancelled => {
+                self.busy = false;
+                self.progress = None;
+                self.status = AppStatus::Ready;
+                self.error_message = None;
+                "Vorgang abgebrochen".to_string()
             }
             AppEvent::ActionFailed { message } => {
                 self.status = AppStatus::Error;
@@ -198,6 +212,7 @@ pub enum AppAction {
     SelectFile { path: String },
     RequestFilePicker,
     CancelFileSelection,
+    CancelSubmission,
     Reset,
     OpenAbout,
     CloseAbout,
@@ -217,6 +232,7 @@ pub enum AppEvent {
     SubmissionStarted,
     SubmissionSucceeded,
     SubmissionFailed { message: String },
+    SubmissionCancelled,
     ActionFailed { message: String },
 }
 

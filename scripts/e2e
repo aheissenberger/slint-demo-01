@@ -49,4 +49,5 @@ dimensions="$(identify -format '%wx%h' artifacts/screenshots/e2e.png)"
   echo "GUI screenshot did not contain a valid rendered display" >&2
   exit 1
 }
+./tests/ui/visual_regression.sh
 echo "PASS semantic UI smoke test"

@@ -1,6 +1,10 @@
+mod localization;
+mod notes;
 mod reducer;
 mod use_cases;
 
+pub use localization::{Catalog, Locale};
+pub use notes::{NoteRepository, NoteService};
 pub use reducer::{
     ActiveDialog, AppAction, AppEffect, AppEvent, AppReducer, AppState, ApplicationError,
     CommandResult, ThemeMode,
@@ -27,7 +31,8 @@ pub struct StateUpdate {
 pub struct AppStateStore<R> {
     service: AppService<R>,
     publisher: StatePublisher,
-    submission_sender: SyncSender<SubmissionPayload>,
+    submission_sender: SyncSender<QueuedSubmission>,
+    cancellation: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -41,17 +46,36 @@ where
     R: AppRepository + Clone + Send + 'static,
 {
     pub fn new(service: AppService<R>) -> Self {
+        let mut initial_state = AppState::new();
+        match service.load_settings() {
+            Ok(settings) => match ThemeMode::parse(&settings.theme_mode) {
+                Ok(mode) => initial_state.theme_mode = mode,
+                Err(error) => {
+                    tracing::warn!(%error, value = %settings.theme_mode, "unbekannter gespeicherter Darstellungsmodus, verwende Systemeinstellung");
+                }
+            },
+            Err(error) => {
+                tracing::warn!(%error, "gespeicherte Einstellungen konnten nicht geladen werden, verwende Vorgabewerte");
+            }
+        }
         let publisher = StatePublisher {
-            state: Arc::new(Mutex::new(AppState::new())),
+            state: Arc::new(Mutex::new(initial_state)),
             subscribers: Arc::new(Mutex::new(Vec::new())),
         };
         let (submission_sender, submission_receiver) =
             mpsc::sync_channel(SUBMISSION_QUEUE_CAPACITY);
-        Self::start_submission_worker(service.clone(), publisher.clone(), submission_receiver);
+        let cancellation = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        Self::start_submission_worker(
+            service.clone(),
+            publisher.clone(),
+            submission_receiver,
+            Arc::clone(&cancellation),
+        );
         Self {
             service,
             publisher,
             submission_sender,
+            cancellation,
         }
     }
 
@@ -64,6 +88,9 @@ where
     }
 
     pub fn dispatch(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
+        if matches!(action, AppAction::CancelSubmission) {
+            return self.cancel_submission();
+        }
         self.reduce(action)
     }
 
@@ -73,7 +100,12 @@ where
 
     pub fn submit(&self) -> Result<CommandResult, ApplicationError> {
         let (payload, started) = self.publisher.begin_submission()?;
-        match self.submission_sender.try_send(payload) {
+        self.cancellation
+            .store(false, std::sync::atomic::Ordering::Release);
+        match self
+            .submission_sender
+            .try_send(QueuedSubmission { payload })
+        {
             Ok(()) => Ok(started),
             Err(TrySendError::Full(_)) => {
                 let error =
@@ -94,6 +126,19 @@ where
         }
     }
 
+    pub fn cancel_submission(&self) -> Result<CommandResult, ApplicationError> {
+        let state = self.current_state()?;
+        if !state.busy {
+            return Ok(CommandResult {
+                message: "Kein Vorgang aktiv".into(),
+                state,
+            });
+        }
+        self.cancellation
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.publisher.publish_event(AppEvent::SubmissionCancelled)
+    }
+
     fn reduce(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
         let effect = match &action {
             AppAction::Focus { element_id } => Some(AppEffect::Focus {
@@ -102,11 +147,22 @@ where
             AppAction::RequestFilePicker => Some(AppEffect::OpenNativeFilePicker),
             _ => None,
         };
+        let theme_mode_to_persist = match &action {
+            AppAction::SetThemeMode { mode } => Some(*mode),
+            _ => None,
+        };
         match self
             .publisher
             .update(effect, |state| AppReducer::apply(state, &action))
         {
-            Ok((message, state)) => Ok(CommandResult { message, state }),
+            Ok((message, state)) => {
+                if let Some(mode) = theme_mode_to_persist {
+                    if let Err(error) = self.service.save_theme_mode(mode.as_str()) {
+                        tracing::warn!(%error, "Darstellungsmodus konnte nicht gespeichert werden");
+                    }
+                }
+                Ok(CommandResult { message, state })
+            }
             Err(error) => {
                 self.publisher.publish_event(AppEvent::ActionFailed {
                     message: error.to_string(),
@@ -119,22 +175,36 @@ where
     fn start_submission_worker(
         service: AppService<R>,
         publisher: StatePublisher,
-        receiver: Receiver<SubmissionPayload>,
+        receiver: Receiver<QueuedSubmission>,
+        cancellation: Arc<std::sync::atomic::AtomicBool>,
     ) {
         thread::spawn(move || {
-            while let Ok(payload) = receiver.recv() {
-                let event = match service.submit(payload) {
+            while let Ok(queued) = receiver.recv() {
+                if cancellation.load(std::sync::atomic::Ordering::Acquire) {
+                    let _ = publisher.publish_event(AppEvent::SubmissionCancelled);
+                    continue;
+                }
+                let event = match service.submit(queued.payload) {
                     Ok(()) => AppEvent::SubmissionSucceeded,
                     Err(error) => AppEvent::SubmissionFailed {
                         message: error.to_string(),
                     },
                 };
+                if cancellation.load(std::sync::atomic::Ordering::Acquire) {
+                    let _ = publisher.publish_event(AppEvent::SubmissionCancelled);
+                    continue;
+                }
                 if let Err(error) = publisher.publish_event(event) {
                     tracing::error!(%error, "Übermittlungsstatus konnte nicht veröffentlicht werden");
                 }
             }
         });
     }
+}
+
+#[derive(Debug)]
+struct QueuedSubmission {
+    payload: SubmissionPayload,
 }
 
 impl StatePublisher {
@@ -256,6 +326,9 @@ mod tests {
         fn load_settings(&self) -> Result<AppSettings, ApplicationError> {
             Ok(AppSettings::default())
         }
+        fn save_settings(&self, _settings: AppSettings) -> Result<(), ApplicationError> {
+            Ok(())
+        }
 
         fn save_submission(&self, submission: SubmissionRecord) -> Result<(), ApplicationError> {
             self.records
@@ -288,6 +361,9 @@ mod tests {
     impl AppRepository for BlockingRepository {
         fn load_settings(&self) -> Result<AppSettings, ApplicationError> {
             Ok(AppSettings::default())
+        }
+        fn save_settings(&self, _settings: AppSettings) -> Result<(), ApplicationError> {
+            Ok(())
         }
 
         fn save_submission(&self, submission: SubmissionRecord) -> Result<(), ApplicationError> {
@@ -454,6 +530,22 @@ mod tests {
         );
         let state = store.current_state().unwrap();
         assert_eq!(state.status, domain::AppStatus::Success);
+        assert!(!state.busy);
+    }
+
+    #[test]
+    fn reset_clears_progress_from_a_previous_submission() {
+        let repository = FakeRepository::default();
+        let store = AppStateStore::new(AppService::new(repository));
+        store
+            .dispatch(AppAction::SetInput {
+                value: "Wert".into(),
+            })
+            .unwrap();
+        store.submit().unwrap();
+        store.dispatch(AppAction::Reset).unwrap();
+        let state = store.current_state().unwrap();
+        assert_eq!(state.progress, None);
         assert!(!state.busy);
     }
 

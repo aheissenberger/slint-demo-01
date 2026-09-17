@@ -41,7 +41,7 @@ export component AboutDialog inherits Rectangle {
             alignment: start;
 
             Text {
-                text: "Über Slint Agent Desktop";
+                text: @tr("Über Slint Agent Desktop");
                 color: Theme.text_primary;
                 font-size: Theme.title_size;
                 font-family: Theme.font_family;
@@ -50,7 +50,7 @@ export component AboutDialog inherits Rectangle {
             }
 
             Text {
-                text: "Version " + root.app-version + " · entwickelt mit Rust und Slint.";
+                text: @tr("Version {} · entwickelt mit Rust und Slint.", root.app-version);
                 color: Theme.text_secondary;
                 font-size: Theme.body_size;
                 font-family: Theme.font_family;
@@ -58,7 +58,7 @@ export component AboutDialog inherits Rectangle {
             }
 
             Text {
-                text: "© 2025 Copilot. Veröffentlicht unter der MIT-Lizenz.";
+                text: @tr("© 2025 Copilot. Veröffentlicht unter der MIT-Lizenz.");
                 color: Theme.text_secondary;
                 font-size: Theme.caption_size;
                 font-family: Theme.font_family;
@@ -71,7 +71,7 @@ export component AboutDialog inherits Rectangle {
             }
 
             Text {
-                text: "Diese Anwendung verwendet das UI-Toolkit Slint (https://slint.dev), lizenziert unter der lizenzgebührenfreien Slint-Lizenz.";
+                text: @tr("Diese Anwendung verwendet das UI-Toolkit Slint (https://slint.dev), lizenziert unter der lizenzgebührenfreien Slint-Lizenz.");
                 color: Theme.text_secondary;
                 font-size: Theme.caption_size;
                 font-family: Theme.font_family;
@@ -91,7 +91,7 @@ export component AboutDialog inherits Rectangle {
                 height: Theme.control_height;
 
                 close-button := FluentButton {
-                    label: "Schließen";
+                    label: @tr("Schließen");
                     primary: true;
                     agent-id: "about.close";
                     agent-role: "button";

@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
 
+mod note;
+pub use note::{Note, NoteBody, NoteId, NoteTitle};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppId(String);
 
@@ -40,11 +43,19 @@ impl SubmissionValue {
     }
 }
 
+fn default_theme_mode() -> String {
+    "system".to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppSettings {
     pub app_name: String,
     pub server_url: String,
     pub enabled: bool,
+    /// Persisted appearance preference ("system", "light", or "dark").
+    /// Defaults when loading older persisted data that predates this field.
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: String,
 }
 
 impl Default for AppSettings {
@@ -53,6 +64,7 @@ impl Default for AppSettings {
             app_name: "Slint Agent Demo".to_string(),
             server_url: "https://example.internal".to_string(),
             enabled: true,
+            theme_mode: default_theme_mode(),
         }
     }
 }
@@ -76,6 +88,14 @@ pub enum DomainError {
     EmptyValue,
     #[error("Wert überschreitet 4096 Zeichen")]
     ValueTooLong,
+    #[error("ungültige Notizkennung")]
+    InvalidNoteId,
+    #[error("Notiztitel darf nicht leer sein")]
+    InvalidNoteTitle,
+    #[error("Notiztitel überschreitet 200 Zeichen")]
+    NoteTitleTooLong,
+    #[error("Notizinhalt überschreitet 8192 Zeichen")]
+    NoteBodyTooLong,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -145,6 +165,14 @@ mod tests {
         let settings = AppSettings::default();
         assert!(settings.enabled);
         assert!(!settings.app_name.is_empty());
+        assert_eq!(settings.theme_mode, "system");
+    }
+
+    #[test]
+    fn settings_without_persisted_theme_mode_default_to_system() {
+        let legacy_json = r#"{"app_name":"Legacy","server_url":"https://legacy","enabled":false}"#;
+        let settings: AppSettings = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(settings.theme_mode, "system");
     }
 
     #[test]

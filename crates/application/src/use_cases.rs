@@ -7,6 +7,7 @@ use uuid::{NoContext, Timestamp, Uuid};
 
 pub trait AppRepository {
     fn load_settings(&self) -> Result<AppSettings, ApplicationError>;
+    fn save_settings(&self, settings: AppSettings) -> Result<(), ApplicationError>;
     fn save_submission(&self, submission: SubmissionRecord) -> Result<(), ApplicationError>;
     fn list_submissions(&self) -> Result<Vec<SubmissionRecord>, ApplicationError>;
 }
@@ -94,5 +95,17 @@ where
 
     pub fn list_records(&self) -> Result<Vec<SubmissionRecord>, ApplicationError> {
         self.repository.list_submissions()
+    }
+
+    pub fn load_settings(&self) -> Result<AppSettings, ApplicationError> {
+        self.repository.load_settings()
+    }
+
+    /// Persists the given appearance preference, leaving every other
+    /// persisted setting untouched.
+    pub fn save_theme_mode(&self, theme_mode: &str) -> Result<(), ApplicationError> {
+        let mut settings = self.repository.load_settings()?;
+        settings.theme_mode = theme_mode.to_string();
+        self.repository.save_settings(settings)
     }
 }

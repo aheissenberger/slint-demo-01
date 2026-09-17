@@ -24,7 +24,7 @@ export component SettingsDialog inherits Rectangle {
     drop-shadow-blur: Theme.dialog_shadow_blur;
     drop-shadow-offset-y: Theme.dialog_shadow_offset_y;
     accessible-role: groupbox;
-    accessible-label: "Einstellungen";
+    accessible-label: @tr("Einstellungen");
 
     VerticalLayout {
         padding: Theme.space_6;
@@ -32,7 +32,7 @@ export component SettingsDialog inherits Rectangle {
         alignment: start;
 
         Text {
-            text: "Einstellungen";
+            text: @tr("Einstellungen");
             color: Theme.text_primary;
             font-size: Theme.title_size;
             font-family: Theme.font_family;
@@ -41,7 +41,7 @@ export component SettingsDialog inherits Rectangle {
         }
 
         Text {
-            text: "Darstellung";
+            text: @tr("Darstellung");
             color: Theme.text_primary;
             font-size: Theme.subtitle_size;
             font-family: Theme.font_family;
@@ -50,7 +50,7 @@ export component SettingsDialog inherits Rectangle {
         }
 
         Text {
-            text: "Legen Sie fest, ob die App der Systemeinstellung folgt oder ein festes Design verwendet.";
+            text: @tr("Legen Sie fest, ob die App der Systemeinstellung folgt oder ein festes Design verwendet.");
             color: Theme.text_secondary;
             font-size: Theme.body_size;
             font-family: Theme.font_family;
@@ -61,13 +61,13 @@ export component SettingsDialog inherits Rectangle {
         Rectangle {
             height: self.preferred-height;
             accessible-role: groupbox;
-            accessible-label: "App-Design";
+            accessible-label: @tr("App-Design");
 
             VerticalLayout {
                 spacing: Theme.space_2;
 
                 Text {
-                    text: "App-Design";
+                    text: @tr("App-Design");
                     color: Theme.text_primary;
                     font-size: Theme.body_size;
                     font-family: Theme.font_family;
@@ -77,7 +77,7 @@ export component SettingsDialog inherits Rectangle {
 
                 FluentRadioButton {
                     width: parent.width;
-                    label: "Systemeinstellung verwenden";
+                    label: @tr("Systemeinstellung verwenden");
                     checked: root.theme-mode == "system";
                     agent-id: "settings.theme.system";
                     agent-role: "radio";
@@ -89,7 +89,7 @@ export component SettingsDialog inherits Rectangle {
 
                 FluentRadioButton {
                     width: parent.width;
-                    label: "Hell";
+                    label: @tr("Hell");
                     checked: root.theme-mode == "light";
                     agent-id: "settings.theme.light";
                     agent-role: "radio";
@@ -101,7 +101,7 @@ export component SettingsDialog inherits Rectangle {
 
                 FluentRadioButton {
                     width: parent.width;
-                    label: "Dunkel";
+                    label: @tr("Dunkel");
                     checked: root.theme-mode == "dark";
                     agent-id: "settings.theme.dark";
                     agent-role: "radio";
@@ -118,7 +118,7 @@ export component SettingsDialog inherits Rectangle {
             height: Theme.control_height;
 
             FluentButton {
-                label: "Schließen";
+                label: @tr("Schließen");
                 primary: true;
                 agent-id: "settings.close";
                 agent-role: "button";

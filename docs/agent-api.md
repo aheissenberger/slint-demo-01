@@ -135,9 +135,13 @@ own state to synchronize the window. No-op transitions do not increment the
 revision or publish another update, preventing feedback when a rendered
 popup reports its already-current visibility back to the store.
 
-The agent-facing state is intentionally in-memory only: it resets to defaults on
-restart and is not persisted to disk. This keeps the dev-only automation surface
-predictable while still letting the UI and agent API share the same live state.
+The agent-facing session state (dialog visibility, draft input, busy/error
+status) is intentionally in-memory only: it resets to defaults on restart and
+is not persisted to disk. This keeps the dev-only automation surface
+predictable while still letting the UI and agent API share the same live
+state. The persisted appearance preference (`theme_mode`) is the one
+exception: it is loaded from and saved to the repository (see
+`docs/architecture.md`), so it survives a restart.
 
 Reusable components declare their agent-facing capabilities explicitly through
 Slint properties, and the agent adapter keeps the corresponding stable
@@ -195,9 +199,11 @@ group:
 - `settings.theme.light` forces the light color scheme.
 - `settings.theme.dark` forces the dark color scheme.
 
-The selected value is exposed as `theme_mode` in application state. Theme
-selection is intentionally in-memory, like the rest of the agent-facing state,
-and returns to `system` when the application restarts.
+The selected value is exposed as `theme_mode` in application state. Unlike
+the rest of the ephemeral agent-facing state, the theme selection is
+persisted through the repository and is restored on the next application
+start; it only falls back to `system` when no settings have been saved yet
+or the persisted value cannot be parsed.
 
 ## About menu and dialog
 

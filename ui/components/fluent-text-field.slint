@@ -1,7 +1,7 @@
 import { Theme } from "../theme/theme.slint";
 
 export component FluentTextField inherits Rectangle {
-    in property <string> label: "Beschriftung";
+    in property <string> label: @tr("Beschriftung");
     in-out property <string> value: "";
     in property <string> placeholder: "";
     in property <bool> disabled: false;

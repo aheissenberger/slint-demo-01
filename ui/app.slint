@@ -5,9 +5,11 @@ import { SettingsDialog } from "./screens/settings-dialog.slint";
 import { Theme } from "./theme/theme.slint";
 
 export component MainWindow inherits Window {
-    in property <string> status: "bereit";
+    in property <string> status: @tr("bereit");
     in property <string> app-version: "0.1.0";
     in property <bool> submit-enabled: false;
+    in property <bool> cancel-enabled: false;
+    in property <int> progress: -1;
     in-out property <string> input-value: "";
     in-out property <string> selected-file: "";
     in-out property <string> theme-mode: "system";
@@ -18,6 +20,7 @@ export component MainWindow inherits Window {
     callback pick-file();
     callback show-native-file-picker();
     callback reset();
+    callback cancel();
     callback about-visibility-changed(bool);
     callback settings-visibility-changed(bool);
     callback theme-mode-changed(string);
@@ -63,10 +66,12 @@ export component MainWindow inherits Window {
             reset-button.focus-control();
         } else if (element-id == "main.submit") {
             submit-button.focus-control();
+        } else if (element-id == "main.cancel") {
+            cancel-button.focus-control();
         }
     }
 
-    title: "Slint Agent Desktop";
+    title: @tr("Slint Agent Desktop");
     preferred-width: 740px;
     preferred-height: Theme.window_preferred_height;
     min-width: 520px;
@@ -74,12 +79,12 @@ export component MainWindow inherits Window {
 
     MenuBar {
         Menu {
-            title: "Datei";
+            title: @tr("Datei");
             // agent-id: "file.settings"
             // agent-role: "menuitem"
             // agent-actions: "click"
             MenuItem {
-                title: "Einstellungen";
+                title: @tr("Einstellungen");
                 activated => {
                     root.settings-visibility-changed(true);
                 }
@@ -87,7 +92,7 @@ export component MainWindow inherits Window {
         }
 
         Menu {
-            title: "Hilfe";
+            title: @tr("Hilfe");
             // agent-id: "help.about"
             // agent-role: "menuitem"
             // agent-actions: "click"
@@ -95,7 +100,7 @@ export component MainWindow inherits Window {
             // agent-api coverage check (scripts/agent-api-check) in sync with
             // crates/agent-api's "help.about" element.
             MenuItem {
-                title: "Über";
+                title: @tr("Über");
                 activated => {
                     root.about-visibility-changed(true);
                 }
@@ -194,7 +199,7 @@ export component MainWindow inherits Window {
         y: Theme.space_4;
         width: root.width - Theme.page_gutter * 2;
         height: Theme.subtitle_line_height;
-        text: "Slint Agent Desktop";
+        text: @tr("Slint Agent Desktop");
         color: Theme.text_primary;
         font-size: Theme.subtitle_size;
         font-family: Theme.font_family;
@@ -231,7 +236,7 @@ export component MainWindow inherits Window {
             alignment: start;
 
             Text {
-                text: "Wert senden";
+                text: @tr("Wert senden");
                 color: Theme.text_primary;
                 font-size: Theme.title_size;
                 font-family: Theme.font_family;
@@ -240,7 +245,7 @@ export component MainWindow inherits Window {
             }
 
             Text {
-                text: "Geben Sie einen Wert ein, um ihn an den Agenten zu senden.";
+                text: @tr("Geben Sie einen Wert ein, um ihn an den Agenten zu senden.");
                 color: Theme.text_secondary;
                 font-size: Theme.body_size;
                 font-family: Theme.font_family;
@@ -254,30 +259,39 @@ export component MainWindow inherits Window {
             // agent-api coverage check (scripts/agent-api-check) in sync with
             // crates/agent-api's "main.status" element.
             Text {
-                text: "Status: " + root.status;
+                text: @tr("Status: {}", root.status);
                 color: Theme.text_secondary;
                 font-size: Theme.caption_size;
                 font-family: Theme.font_family;
-                accessible-label: "Anwendungsstatus";
+                accessible-label: @tr("Anwendungsstatus");
+                height: Theme.caption_line_height;
+            }
+
+            if (root.progress >= 0) : Text {
+                text: @tr("Fortschritt: {}%", root.progress);
+                color: Theme.text_secondary;
+                font-size: Theme.caption_size;
+                font-family: Theme.font_family;
+                accessible-label: @tr("Fortschritt des Vorgangs");
                 height: Theme.caption_line_height;
             }
 
             input-field := FluentTextField {
                 width: parent.width;
-                label: "Wert";
-                placeholder: "Wert eingeben";
+                label: @tr("Wert");
+                placeholder: @tr("Wert eingeben");
                 value <=> root.input-value;
                 agent-id: "main.input";
                 agent-role: "textbox";
                 agent-actions: "get_value,set_value,focus";
-                label-for-accessibility: "Haupteingabe";
+                label-for-accessibility: @tr("Haupteingabe");
                 edited(value) => {
                     root.input-changed(value);
                 }
             }
 
             file-picker := FluentButton {
-                label: "Datei auswählen";
+                label: @tr("Datei auswählen");
                 agent-id: "main.file-picker";
                 agent-role: "button";
                 agent-actions: "click,get_value,set_value,focus";
@@ -294,12 +308,12 @@ export component MainWindow inherits Window {
             Text {
                 width: parent.width;
                 height: Theme.body_line_height * 2;
-                text: root.selected-file == "" ? "Keine Datei ausgewählt" : root.selected-file;
+                text: root.selected-file == "" ? @tr("Keine Datei ausgewählt") : root.selected-file;
                 color: root.selected-file == "" ? Theme.text_secondary : Theme.text_primary;
                 font-size: Theme.body_size;
                 font-family: Theme.font_family;
                 wrap: word-wrap;
-                accessible-label: "Ausgewählter Dateipfad";
+                accessible-label: @tr("Ausgewählter Dateipfad");
             }
 
             HorizontalLayout {
@@ -309,7 +323,7 @@ export component MainWindow inherits Window {
                 height: Theme.control_height;
 
                 reset-button := FluentButton {
-                    label: "Zurücksetzen";
+                    label: @tr("Zurücksetzen");
                     agent-id: "main.reset";
                     agent-role: "button";
                     agent-actions: "click,focus";
@@ -320,7 +334,7 @@ export component MainWindow inherits Window {
                 }
 
                 submit-button := FluentButton {
-                    label: "Senden";
+                    label: @tr("Senden");
                     primary: true;
                     disabled: !root.submit-enabled;
                     agent-id: "main.submit";
@@ -328,6 +342,17 @@ export component MainWindow inherits Window {
                     agent-actions: "click,focus";
                     clicked => {
                         root.submit(root.input-value);
+                    }
+                }
+
+                cancel-button := FluentButton {
+                    label: @tr("Abbrechen");
+                    disabled: !root.cancel-enabled;
+                    agent-id: "main.cancel";
+                    agent-role: "button";
+                    agent-actions: "click,focus";
+                    clicked => {
+                        root.cancel();
                     }
                 }
             }

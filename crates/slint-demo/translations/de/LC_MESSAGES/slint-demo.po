@@ -1,0 +1,207 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: slint-demo\n"
+"POT-Creation-Date: 2026-09-17 20:30+0000\n"
+"PO-Revision-Date: 2026-09-17 20:30+0000\n"
+"Last-Translator: Slint Agent Desktop maintainers\n"
+"Language-Team: none\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: ui/app.slint:8
+msgctxt "MainWindow"
+msgid "bereit"
+msgstr "bereit"
+
+#: ui/app.slint:74 ui/app.slint:202
+msgctxt "MainWindow"
+msgid "Slint Agent Desktop"
+msgstr "Slint Agent Desktop"
+
+#: ui/app.slint:82
+msgctxt "MainWindow"
+msgid "Datei"
+msgstr "Datei"
+
+#: ui/app.slint:87
+msgctxt "MainWindow"
+msgid "Einstellungen"
+msgstr "Einstellungen"
+
+#: ui/app.slint:95
+msgctxt "MainWindow"
+msgid "Hilfe"
+msgstr "Hilfe"
+
+#: ui/app.slint:103
+msgctxt "MainWindow"
+msgid "Über"
+msgstr "Über"
+
+#: ui/app.slint:239
+msgctxt "MainWindow"
+msgid "Wert senden"
+msgstr "Wert senden"
+
+#: ui/app.slint:248
+msgctxt "MainWindow"
+msgid "Geben Sie einen Wert ein, um ihn an den Agenten zu senden."
+msgstr "Geben Sie einen Wert ein, um ihn an den Agenten zu senden."
+
+#: ui/app.slint:262
+msgctxt "MainWindow"
+msgid "Status: {}"
+msgstr "Status: {}"
+
+#: ui/app.slint:266
+msgctxt "MainWindow"
+msgid "Anwendungsstatus"
+msgstr "Anwendungsstatus"
+
+#: ui/app.slint:271
+msgctxt "MainWindow"
+msgid "Fortschritt: {}%"
+msgstr "Fortschritt: {}%"
+
+#: ui/app.slint:275
+msgctxt "MainWindow"
+msgid "Fortschritt des Vorgangs"
+msgstr "Fortschritt des Vorgangs"
+
+#: ui/app.slint:281
+msgctxt "MainWindow"
+msgid "Wert"
+msgstr "Wert"
+
+#: ui/app.slint:282
+msgctxt "MainWindow"
+msgid "Wert eingeben"
+msgstr "Wert eingeben"
+
+#: ui/app.slint:287
+msgctxt "MainWindow"
+msgid "Haupteingabe"
+msgstr "Haupteingabe"
+
+#: ui/app.slint:294
+msgctxt "MainWindow"
+msgid "Datei auswählen"
+msgstr "Datei auswählen"
+
+#: ui/app.slint:311
+msgctxt "MainWindow"
+msgid "Keine Datei ausgewählt"
+msgstr "Keine Datei ausgewählt"
+
+#: ui/app.slint:316
+msgctxt "MainWindow"
+msgid "Ausgewählter Dateipfad"
+msgstr "Ausgewählter Dateipfad"
+
+#: ui/app.slint:326
+msgctxt "MainWindow"
+msgid "Zurücksetzen"
+msgstr "Zurücksetzen"
+
+#: ui/app.slint:337
+msgctxt "MainWindow"
+msgid "Senden"
+msgstr "Senden"
+
+#: ui/app.slint:349
+msgctxt "MainWindow"
+msgid "Abbrechen"
+msgstr "Abbrechen"
+
+#: ui/components/fluent-button-preview.slint:5
+msgctxt "FluentButtonPreview"
+msgid "Fluent-Schaltflächenvorschau"
+msgstr "Fluent-Schaltflächenvorschau"
+
+#: ui/components/fluent-button-preview.slint:13
+msgctxt "FluentButtonPreview"
+msgid "Schaltfläche"
+msgstr "Schaltfläche"
+
+#: ui/components/fluent-button.slint:4
+msgctxt "FluentButton"
+msgid "Schaltfläche"
+msgstr "Schaltfläche"
+
+#: ui/components/fluent-text-field.slint:4
+msgctxt "FluentTextField"
+msgid "Beschriftung"
+msgstr "Beschriftung"
+
+#: ui/screens/about-dialog.slint:44
+msgctxt "AboutDialog"
+msgid "Über Slint Agent Desktop"
+msgstr "Über Slint Agent Desktop"
+
+#: ui/screens/about-dialog.slint:53
+msgctxt "AboutDialog"
+msgid "Version {} · entwickelt mit Rust und Slint."
+msgstr "Version {} · entwickelt mit Rust und Slint."
+
+#: ui/screens/about-dialog.slint:61
+msgctxt "AboutDialog"
+msgid "© 2025 Copilot. Veröffentlicht unter der MIT-Lizenz."
+msgstr "© 2025 Copilot. Veröffentlicht unter der MIT-Lizenz."
+
+#: ui/screens/about-dialog.slint:74
+msgctxt "AboutDialog"
+msgid ""
+"Diese Anwendung verwendet das UI-Toolkit Slint (https://slint.dev), "
+"lizenziert unter der lizenzgebührenfreien Slint-Lizenz."
+msgstr "Diese Anwendung verwendet das UI-Toolkit Slint (https://slint.dev), lizenziert unter der lizenzgebührenfreien Slint-Lizenz."
+
+#: ui/screens/about-dialog.slint:94
+msgctxt "AboutDialog"
+msgid "Schließen"
+msgstr "Schließen"
+
+#: ui/screens/settings-dialog.slint:27 ui/screens/settings-dialog.slint:35
+msgctxt "SettingsDialog"
+msgid "Einstellungen"
+msgstr "Einstellungen"
+
+#: ui/screens/settings-dialog.slint:44
+msgctxt "SettingsDialog"
+msgid "Darstellung"
+msgstr "Darstellung"
+
+#: ui/screens/settings-dialog.slint:53
+msgctxt "SettingsDialog"
+msgid ""
+"Legen Sie fest, ob die App der Systemeinstellung folgt oder ein festes "
+"Design verwendet."
+msgstr "Legen Sie fest, ob die App der Systemeinstellung folgt oder ein festes Design verwendet."
+
+#: ui/screens/settings-dialog.slint:64 ui/screens/settings-dialog.slint:70
+msgctxt "SettingsDialog"
+msgid "App-Design"
+msgstr "App-Design"
+
+#: ui/screens/settings-dialog.slint:80
+msgctxt "SettingsDialog"
+msgid "Systemeinstellung verwenden"
+msgstr "Systemeinstellung verwenden"
+
+#: ui/screens/settings-dialog.slint:92
+msgctxt "SettingsDialog"
+msgid "Hell"
+msgstr "Hell"
+
+#: ui/screens/settings-dialog.slint:104
+msgctxt "SettingsDialog"
+msgid "Dunkel"
+msgstr "Dunkel"
+
+#: ui/screens/settings-dialog.slint:121
+msgctxt "SettingsDialog"
+msgid "Schließen"
+msgstr "Schließen"

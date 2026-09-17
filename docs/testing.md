@@ -64,6 +64,20 @@ Approved visual reference images belong in `tests/ui/baselines/`. Keep the
 baseline name tied to the test or screen it represents, and never replace a
 baseline automatically as part of a failing test.
 
+Phase-4 visual coverage includes the initial main screen and each visible modal
+state (About and settings) through `tests/ui/visual_regression.sh`, which is
+also run by `./scripts/e2e`. Baselines are reviewed artifacts; compare them at
+a fixed virtual-display size and retain failure screenshots under
+`artifacts/failures/`. Busy/cancellable submission is validated through the
+semantic state and action contract because the demo repository completes its
+submission operation synchronously; a future long-running adapter must add a
+dedicated busy visual baseline.
+
+Startup performance is measured by the structured `Anwendungsstart abgeschlossen`
+log entry (`startup_ms`) emitted after the window and state synchronization are
+ready. Collect it with `./scripts/agent logs` and compare repeated cold starts;
+no persistence implementation is involved in this measurement.
+
 ## Screenshot evidence
 Screenshots are stored under `artifacts/screenshots/` for agent review and regression visibility.
 
