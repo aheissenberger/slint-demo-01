@@ -1,0 +1,23 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"terminal.integrated.env.linux": {
+			"DISPLAY": ":1",
+			"RUSTUP_HOME": "/root/.rustup",
+			"CARGO_HOME": "/root/.cargo"
+		},
+		"chat.tools.terminal.autoApprove": {
+			"docker compose": true,
+			"cargo check": true,
+			"./scripts/doctor": true,
+			"./scripts/test": true,
+			"./scripts/check": true,
+			"./scripts/e2e": true,
+			"./scripts/run": true
+		}
+	}
+}
