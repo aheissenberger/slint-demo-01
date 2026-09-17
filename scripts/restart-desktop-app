@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DISPLAY="${DISPLAY:-:1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-dir}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
+workspace="/workspace"
+run_dir="${SLINT_DEMO_RUN_DIR:-/tmp/slint-demo-dev}"
+pid_file="$run_dir/slint-demo.pid"
+stamp_file="$run_dir/slint-demo.started-mtime"
+log_file="${SLINT_DEMO_DESKTOP_LOG:-/tmp/desktop.log}"
+target_dir="${CARGO_TARGET_DIR:-$workspace/target}"
+if [[ "$target_dir" != /* ]]; then
+  target_dir="$workspace/$target_dir"
+fi
+binary="$target_dir/debug/slint-demo"
+
+mkdir -p "$run_dir"
+
+running_expected_binary() {
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ -e "/proc/$pid/exe" ]] || return 1
+
+  local actual_binary
+  actual_binary="$(readlink "/proc/$pid/exe")"
+  [[ "$actual_binary" == "$binary" || "$actual_binary" == "$binary (deleted)" ]]
+}
+
+stop_previous_app() {
+  if [[ ! -f "$pid_file" ]]; then
+    return
+  fi
+
+  local pid
+  pid="$(<"$pid_file")"
+  if ! running_expected_binary "$pid"; then
+    rm -f "$pid_file"
+    return
+  fi
+
+  echo "Stopping previous desktop app process $pid."
+  kill "$pid" >/dev/null 2>&1 || true
+  for _ in {1..50}; do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      rm -f "$pid_file"
+      return
+    fi
+    sleep 0.1
+  done
+
+  echo "Desktop app process $pid did not stop after SIGTERM; sending SIGKILL." >&2
+  kill -KILL "$pid" >/dev/null 2>&1 || true
+  rm -f "$pid_file"
+}
+
+wait_for_health() {
+  local pid="$1"
+  for _ in {1..50}; do
+    if curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1; then
+      return 0
+    fi
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      echo "Desktop app process $pid exited before the agent API became healthy." >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+
+  echo "Desktop app process $pid started, but the agent API did not become healthy." >&2
+  return 1
+}
+
+cd "$workspace"
+echo "Building desktop app with agent API enabled."
+cargo build -p slint-demo --bin slint-demo --features agent-api
+
+build_mtime="$(stat -c %Y "$binary")"
+if [[ -f "$stamp_file" ]] && [[ "$(<"$stamp_file")" == "$build_mtime" ]] &&
+  [[ -f "$pid_file" ]] && running_expected_binary "$(<"$pid_file")" &&
+  curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1; then
+  echo "Build output is unchanged; desktop app is already running the current binary."
+  exit 0
+fi
+
+if curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1 &&
+  { [[ ! -f "$pid_file" ]] || ! running_expected_binary "$(<"$pid_file")"; }; then
+  echo "Agent API port 8080 is already served by an app outside this dev runner; refusing to start a second app." >&2
+  exit 1
+fi
+
+stop_previous_app
+
+echo "Starting desktop app from $binary."
+"$binary" >>"$log_file" 2>&1 &
+pid="$!"
+printf '%s\n' "$pid" > "$pid_file"
+printf '%s\n' "$build_mtime" > "$stamp_file"
+
+wait_for_health "$pid"
+echo "Desktop app is running (pid $pid, agent API: http://127.0.0.1:8080)."

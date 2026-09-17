@@ -28,7 +28,9 @@ The full environment runs inside a Linux DevContainer and includes:
 The container starts Xvfb, Openbox, x11vnc, and websockify automatically. The
 desktop app runs under `cargo watch`, so editing Rust or Slint source
 (`crates/`, `ui/`) automatically recompiles and restarts the running app in
-noVNC — no manual restart or DevContainer rebuild needed.
+noVNC after a successful build. If a build fails, the previous desktop process
+keeps running; the runner restarts it only after a new binary exists. No manual
+restart or DevContainer rebuild is needed.
 Use `scripts/agent ui` to inspect semantic controls, `scripts/agent set
 main.input Test` followed by `scripts/agent click main.submit` to exercise the
 UI path, or `scripts/agent command submit Test` to exercise application intent

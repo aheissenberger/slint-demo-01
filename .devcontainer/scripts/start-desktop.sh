@@ -40,11 +40,4 @@ with socket.create_connection(("127.0.0.1", 5900), timeout=3) as connection:
     if not connection.recv(12).startswith(b"RFB "):
         raise SystemExit("VNC server did not return an RFB greeting")
 PY
-exec cargo watch \
-  --watch crates \
-  --watch ui \
-  --watch Cargo.toml \
-  --watch Cargo.lock \
-  --watch rust-toolchain.toml \
-  --clear \
-  -x 'run -p slint-demo --bin slint-demo --features agent-api' > /tmp/desktop.log 2>&1
+exec /workspace/scripts/run --watch > /tmp/desktop.log 2>&1

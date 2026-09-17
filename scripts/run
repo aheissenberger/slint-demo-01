@@ -1,17 +1,89 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export DISPLAY=:1
+export DISPLAY="${DISPLAY:-:1}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-dir}"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
+watch=false
+once=false
+case "${1:-}" in
+  --watch) watch=true ;;
+  --once) once=true ;;
+  "")
+    ;;
+  *)
+    echo "Usage: scripts/run [--watch|--once]" >&2
+    exit 2
+    ;;
+esac
+
+if "$once"; then
+  # agent-api is opt-in (see crates/slint-demo/Cargo.toml); enable it
+  # explicitly for this development/test entry point.
+  exec cargo run -p slint-demo --bin slint-demo --features agent-api
+fi
+
+run_dir="${SLINT_DEMO_RUN_DIR:-/tmp/slint-demo-dev}"
+pid_file="$run_dir/slint-demo.pid"
+restart_script="/workspace/scripts/restart-desktop-app"
+target_dir="${CARGO_TARGET_DIR:-/workspace/target}"
+if [[ "$target_dir" != /* ]]; then
+  target_dir="/workspace/$target_dir"
+fi
+binary="$target_dir/debug/slint-demo"
+mkdir -p "$run_dir"
+
 if curl --fail --silent http://127.0.0.1:8080/health >/dev/null 2>&1; then
   echo "Desktop app is already running (agent API: http://127.0.0.1:8080)."
   echo "View it through noVNC at http://localhost:6080/vnc.html"
-  exit 0
+  if ! "$watch"; then
+    exit 0
+  fi
+
+  if [[ ! -f "$pid_file" ]]; then
+    echo "The running app was not started by this dev runner; not starting a second watcher." >&2
+    exit 0
+  fi
 fi
 
-# agent-api is opt-in (see crates/slint-demo/Cargo.toml); enable it explicitly
-# for this development/test entry point.
-cargo run -p slint-demo --bin slint-demo --features agent-api
+running_expected_binary() {
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ -e "/proc/$pid/exe" ]] || return 1
+
+  local actual_binary
+  actual_binary="$(readlink "/proc/$pid/exe")"
+  [[ "$actual_binary" == "$binary" || "$actual_binary" == "$binary (deleted)" ]]
+}
+
+if ! command -v cargo-watch >/dev/null 2>&1; then
+  echo "cargo-watch is unavailable; falling back to a one-shot development run." >&2
+  exec cargo run -p slint-demo --bin slint-demo --features agent-api
+fi
+
+cleanup() {
+  if [[ ! -f "$pid_file" ]]; then
+    return
+  fi
+
+  local pid
+  pid="$(<"$pid_file")"
+  if running_expected_binary "$pid"; then
+    kill "$pid" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+"$restart_script" || true
+
+cargo watch \
+  --watch crates \
+  --watch ui \
+  --watch Cargo.toml \
+  --watch Cargo.lock \
+  --watch rust-toolchain.toml \
+  --clear \
+  --postpone \
+  --shell "$restart_script"

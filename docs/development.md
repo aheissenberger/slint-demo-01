@@ -50,14 +50,16 @@ The post-create hook installs the pinned Rust components, fetches locked
 dependencies, and runs doctor, check, and unit/application tests. Runtime
 semantic checks remain explicit: run `./scripts/e2e` after `./scripts/run`.
 
-The Compose command starts the desktop automatically under `cargo watch`,
-which recompiles and restarts the running app whenever a watched source file
-changes (`crates/`, `ui/`, `Cargo.toml`, `Cargo.lock`,
-`rust-toolchain.toml`). Editing UI or Rust code and saving is enough to see
-the change reflected in noVNC; no manual restart or DevContainer rebuild is
-required. Running `./scripts/run` again is safe: it detects the existing
-application and prints the noVNC URL instead of starting a second process on
-port 8080.
+The Compose command starts the desktop through `./scripts/run --watch`. The
+runner uses `cargo watch` to rebuild whenever a watched source file changes
+(`crates/`, `ui/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`). It keeps
+the current desktop process alive while compiling and restarts it only after a
+successful build has produced a new binary. If a build fails, the old app keeps
+running in noVNC until the next successful build. Editing UI or Rust code and
+saving is enough to see the change reflected; no manual restart or DevContainer
+rebuild is required. Running `./scripts/run` again is safe: it detects the
+existing application and prints the noVNC URL instead of starting a second
+process on port 8080.
 
 The Compose setup persists selected VS Code and Copilot state with Docker named
 volumes so extension data and chat sessions survive DevContainer rebuilds. It
