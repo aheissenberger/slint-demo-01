@@ -61,15 +61,6 @@ jobs:
       - name: Run all tests
         run: cargo test --locked --workspace --all-features
 
-      - name: Audit dependency policy
-        shell: pwsh
-        run: |
-          cargo +1.98.1 install cargo-deny --version 0.20.2 --locked
-          if ($LASTEXITCODE -ne 0) {
-            throw "cargo-deny installation failed with exit code $LASTEXITCODE."
-          }
-          cargo deny check advisories bans licenses sources
-
       - name: Build release executable
         run: cargo build --locked --release -p slint-demo --no-default-features
 

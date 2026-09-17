@@ -120,7 +120,23 @@ pub fn show_notification(notification: &NativeNotification) {
 }
 
 pub fn is_single_instance_error(error: &io::Error) -> bool {
-    matches!(error.kind(), io::ErrorKind::WouldBlock)
+    error.kind() == io::ErrorKind::WouldBlock || is_windows_file_lock_conflict(error)
+}
+
+#[cfg(target_os = "windows")]
+fn is_windows_file_lock_conflict(error: &io::Error) -> bool {
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const ERROR_LOCK_VIOLATION: i32 = 33;
+
+    matches!(
+        error.raw_os_error(),
+        Some(ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_windows_file_lock_conflict(_: &io::Error) -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -175,6 +191,20 @@ mod tests {
 
         drop(first_instance);
         fs::remove_dir_all(directory).expect("remove temporary runtime directory");
+    }
+
+    #[test]
+    fn single_instance_errors_include_nonblocking_lock_failures() {
+        assert!(is_single_instance_error(&io::Error::from(
+            io::ErrorKind::WouldBlock
+        )));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn single_instance_errors_include_windows_file_lock_conflicts() {
+        assert!(is_single_instance_error(&io::Error::from_raw_os_error(32)));
+        assert!(is_single_instance_error(&io::Error::from_raw_os_error(33)));
     }
 
     #[cfg(target_os = "windows")]
