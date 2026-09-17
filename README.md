@@ -47,6 +47,20 @@ scripts/mcp
 scripts/agent diagnostics
 ```
 
+## CI and unsigned test release artifacts
+
+Windows is the primary CI and release validation platform. The Windows workflow
+runs formatting, production-posture checks, strict all-feature linting, the
+Slint/agent API static contract checks, tests, `cargo-deny`, release EXE/MSI
+builds, MSI install/uninstall validation, and an installed unsigned EXE smoke
+test. macOS remains a secondary validation platform.
+
+The "Test release artifacts" workflow can be run manually or by pushing a `v*`
+tag. It intentionally produces unsigned validation artifacts only: Windows
+EXE/MSI and macOS ZIP outputs are uploaded with SHA-256 checksums, CycloneDX
+SBOMs, and GitHub build-provenance attestations. It does not perform code
+signing or require signing certificates.
+
 ## Repository layout
 See the architecture and docs folders for the intended production structure.
 
@@ -57,27 +71,34 @@ See the architecture and docs folders for the intended production structure.
 - `tests/ui/baselines/` — approved visual reference images
 - `artifacts/failures/` — generated UI failure bundles (ignored by default)
 
-## macOS distribution builds
+## macOS validation builds
 
 The macOS workflow is a secondary verification build for pull requests and
-pushes to `main`. It produces a signed, notarized, and stapled application only
-for version tags matching `v*`. These steps are required for an application
-downloaded from GitHub to pass Gatekeeper; an unsigned application is not a
-release artifact.
+pushes to `main`. It produces the unsigned
+`slint-demo-macos-arm64-unsigned` artifact for CI inspection. For `v*` tags,
+it signs and notarizes a distribution only when its complete Apple signing
+configuration is available; otherwise it emits the unsigned artifact and a CI
+warning instead of failing the test release.
 
-Configure these GitHub Actions secrets before running a distribution build:
+### Enabling macOS signing and notarization
 
-- `APPLE_CERTIFICATE_BASE64` — Base64-encoded `.p12` export of the **Developer
-  ID Application** certificate and private key.
-- `APPLE_CERTIFICATE_PASSWORD` — Password used when exporting that `.p12`.
-- `APPLE_DEVELOPER_ID_APPLICATION` — Signing identity, for example `Developer
-  ID Application: Example Company (ABCDE12345)`.
-- `APPLE_ID` — Apple ID used for notarization.
-- `APPLE_TEAM_ID` — Apple Developer Team ID.
-- `APPLE_APP_SPECIFIC_PASSWORD` — App-specific password for that Apple ID.
+To enable the optional signed macOS artifact for a `v*` tag, configure all of
+the following repository or environment secrets. The workflow deliberately
+skips signing when any one of them, including `APPLE_ID`, is missing.
 
-Pull-request builds intentionally publish an artifact named
-`slint-demo-macos-arm64-unsigned`; use it only for CI inspection, not end-user
-distribution. Download `slint-demo-macos-arm64.zip` from a successful
-distribution build, extract it with Finder, and open the resulting
-`slint-demo.app`.
+- `APPLE_CERTIFICATE_BASE64` — Base64-encoded `.p12` export containing the
+  **Developer ID Application** certificate and its private key.
+- `APPLE_CERTIFICATE_PASSWORD` — Password used to export that `.p12` file.
+- `APPLE_DEVELOPER_ID_APPLICATION` — The complete Developer ID Application
+  signing identity, for example `Developer ID Application: Example Company
+  (ABCDE12345)`.
+- `APPLE_ID` — Apple ID authorized for notarization.
+- `APPLE_TEAM_ID` — Ten-character Apple Developer Team ID.
+- `APPLE_APP_SPECIFIC_PASSWORD` — Apple-ID app-specific password for
+  notarization; do not use the Apple-ID account password.
+
+Use a protected GitHub Environment for these secrets and restrict it to
+maintainers and protected version tags. The signing material is imported into
+a temporary CI keychain and removed at the end of the signing job. The
+notarized output is uploaded as `slint-demo-macos-arm64`; otherwise the
+unsigned CI-inspection artifact remains `slint-demo-macos-arm64-unsigned`.

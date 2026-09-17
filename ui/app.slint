@@ -40,22 +40,18 @@ export component MainWindow inherits Window {
 
     public function show-about() {
         about-popup.show();
-        root.about-visibility-changed(true);
     }
 
     public function hide-about() {
         about-popup.close();
-        root.about-visibility-changed(false);
     }
 
     public function show-settings() {
         settings-popup.show();
-        root.settings-visibility-changed(true);
     }
 
     public function hide-settings() {
         settings-popup.close();
-        root.settings-visibility-changed(false);
     }
 
     public function focus-control(element-id: string) {
@@ -85,7 +81,7 @@ export component MainWindow inherits Window {
             MenuItem {
                 title: "Einstellungen";
                 activated => {
-                    root.show-settings();
+                    root.settings-visibility-changed(true);
                 }
             }
         }
@@ -101,7 +97,7 @@ export component MainWindow inherits Window {
             MenuItem {
                 title: "Über";
                 activated => {
-                    root.show-about();
+                    root.about-visibility-changed(true);
                 }
             }
         }
@@ -131,7 +127,7 @@ export component MainWindow inherits Window {
                 root.theme-mode-changed(mode);
             }
             close-requested => {
-                root.hide-settings();
+                root.settings-visibility-changed(false);
             }
         }
     }
@@ -148,6 +144,9 @@ export component MainWindow inherits Window {
         width: root.width;
         height: root.height;
         close-policy: no-auto-close;
+        init => {
+            about-dialog.focus-close();
+        }
 
         Rectangle {
             width: 100%;
@@ -155,12 +154,12 @@ export component MainWindow inherits Window {
             background: Theme.scrim;
         }
 
-        AboutDialog {
+        about-dialog := AboutDialog {
             x: (root.width - self.width) / 2;
             y: (root.height - self.height) / 2;
             app-version: root.app-version;
             close-requested => {
-                root.hide-about();
+                root.about-visibility-changed(false);
             }
         }
     }

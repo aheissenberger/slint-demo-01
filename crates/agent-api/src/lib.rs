@@ -338,31 +338,17 @@ where
             "open_settings" => AppAction::OpenSettings,
             "close_settings" => AppAction::CloseSettings,
             "set_theme" => {
-                let mode = request
-                    .arguments
-                    .get("mode")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or_default();
+                let mode = required_argument(&request.arguments, "mode")?;
                 AppAction::SetThemeMode {
                     mode: ThemeMode::parse(mode)?,
                 }
             }
             "set_input" => {
-                let value = request
-                    .arguments
-                    .get("value")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
-                    .unwrap_or_default();
+                let value = required_argument(&request.arguments, "value")?.to_string();
                 AppAction::SetInput { value }
             }
             "select_file" => {
-                let value = request
-                    .arguments
-                    .get("path")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
-                    .unwrap_or_default();
+                let value = required_argument(&request.arguments, "path")?.to_string();
                 AppAction::SelectFile { path: value }
             }
             _ => {
@@ -390,7 +376,7 @@ where
             "set_value" if action.id == "main.input" => Ok(self
                 .store
                 .dispatch(AppAction::SetInput {
-                    value: action.value.unwrap_or_default(),
+                    value: required_action_value(&action)?.to_string(),
                 })?
                 .message),
             "click" if action.id == "main.reset" => {
@@ -399,7 +385,7 @@ where
             "set_value" if action.id == "main.file-picker" => Ok(self
                 .store
                 .dispatch(AppAction::SelectFile {
-                    path: action.value.unwrap_or_default(),
+                    path: required_action_value(&action)?.to_string(),
                 })?
                 .message),
             "click" if action.id == "main.file-picker" => {
@@ -570,6 +556,24 @@ where
     }
 }
 
+fn required_argument<'a>(
+    arguments: &'a serde_json::Value,
+    name: &str,
+) -> Result<&'a str, ApplicationError> {
+    arguments
+        .get(name)
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| {
+            ApplicationError::InvalidPayload(format!("Zeichenfolgenargument fehlt: {name}"))
+        })
+}
+
+fn required_action_value(action: &AgentActionRequest) -> Result<&str, ApplicationError> {
+    action.value.as_deref().ok_or_else(|| {
+        ApplicationError::InvalidPayload(format!("Wert für Element fehlt: {}", action.id))
+    })
+}
+
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 const MAX_BODY_BYTES: usize = 8 * 1024;
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -723,9 +727,21 @@ mod tests {
     use super::*;
     use infrastructure::MemoryRepository;
     use std::io::Cursor;
+    use std::{thread, time::Duration};
 
     fn api() -> AgentApi<MemoryRepository> {
         AgentApi::new(MemoryRepository::with_default_settings().build_service())
+    }
+
+    fn wait_for_submission(api: &AgentApi<MemoryRepository>) -> AgentStateResponse {
+        for _ in 0..50 {
+            let state = api.get_state().unwrap();
+            if !state.busy {
+                return state;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("Übermittlung wurde nicht innerhalb von 500 ms abgeschlossen");
     }
 
     #[test]
@@ -763,7 +779,7 @@ mod tests {
             value: None,
         })
         .unwrap();
-        assert_eq!(api.get_state().unwrap().status, "erfolgreich");
+        assert_eq!(wait_for_submission(&api).status, "erfolgreich");
     }
 
     #[test]

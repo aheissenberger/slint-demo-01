@@ -1,0 +1,240 @@
+name: Test release artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Build unsigned Windows artifacts
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: 1.98.1
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "."
+          shared-key: release-windows-x86_64
+          cache-targets: true
+          cache-all-crates: true
+
+      - name: Build release executable
+        run: cargo build --locked --release -p slint-demo --no-default-features
+
+      - name: Ensure WiX Toolset is available
+        shell: pwsh
+        run: |
+          $wixBin = Get-ChildItem 'C:\Program Files (x86)\WiX Toolset v*\bin' -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $wixBin) {
+            choco install wixtoolset --no-progress -y
+            if ($LASTEXITCODE -ne 0) {
+              throw "WiX Toolset installation failed with exit code $LASTEXITCODE."
+            }
+            $wixBin = Get-ChildItem 'C:\Program Files (x86)\WiX Toolset v*\bin' -Directory -ErrorAction Stop |
+              Sort-Object Name -Descending | Select-Object -First 1
+          }
+          Write-Host "Using WiX Toolset bin folder: $($wixBin.FullName)"
+          $wixBin.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Ensure cargo-wix is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo-wix -ErrorAction SilentlyContinue)) {
+            cargo install cargo-wix --version 0.3.8 --locked
+            if ($LASTEXITCODE -ne 0) {
+              throw "cargo-wix installation failed with exit code $LASTEXITCODE."
+            }
+          }
+          cargo wix --version
+
+      - name: Build Windows installer (MSI)
+        run: cargo wix --package slint-demo --culture de-DE --nocapture --output target/wix/slint-demo.msi
+
+      - name: Smoke-test unsigned Windows installer and EXE
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path target/wix/slint-demo.msi
+          $application = Join-Path $env:ProgramFiles 'slint-demo\bin\slint-demo.exe'
+          $smokeProcess = $null
+
+          $installProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
+            '/i', $installer, '/qn', '/norestart'
+          )
+          if ($installProcess.ExitCode -ne 0) {
+            throw "MSI installation failed with exit code $($installProcess.ExitCode)."
+          }
+          if (-not (Test-Path $application -PathType Leaf)) {
+            throw "Installed application was not found at $application."
+          }
+
+          try {
+            $smokeProcess = Start-Process -FilePath $application -PassThru
+            Start-Sleep -Seconds 5
+            if ($smokeProcess.HasExited) {
+              throw "Installed application exited during smoke test with code $($smokeProcess.ExitCode)."
+            }
+          } finally {
+            if ($null -ne $smokeProcess -and -not $smokeProcess.HasExited) {
+              Stop-Process -Id $smokeProcess.Id -Force
+              $smokeProcess.WaitForExit(10000) | Out-Null
+            }
+            $uninstallProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
+              '/x', $installer, '/qn', '/norestart'
+            )
+            if ($uninstallProcess.ExitCode -ne 0) {
+              throw "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode)."
+            }
+            if (Test-Path $application) {
+              throw "Installed application remained after MSI uninstallation."
+            }
+          }
+
+      - name: Generate Windows SBOM and checksums
+        shell: pwsh
+        run: |
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx --format json --all --all-features --target all
+
+          $artifactDir = New-Item -ItemType Directory -Force target/release-artifacts/windows-x86_64
+          Copy-Item target/release/slint-demo.exe $artifactDir
+          Copy-Item target/wix/slint-demo.msi $artifactDir
+          Copy-Item crates/slint-demo/slint-demo.cdx.json (Join-Path $artifactDir 'slint-demo.cyclonedx.json')
+
+          Push-Location $artifactDir
+          Get-ChildItem -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+          Pop-Location
+
+      - name: Upload unsigned Windows release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: slint-demo-windows-x86_64-unsigned-test-release
+          path: target/release-artifacts/windows-x86_64/*
+          if-no-files-found: error
+
+      - name: Attest unsigned Windows release artifacts
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: target/release-artifacts/windows-x86_64/*
+
+  macos:
+    name: Build unsigned macOS validation artifact
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: 1.98.1
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "."
+          shared-key: release-macos-arm64
+          cache-targets: true
+          cache-all-crates: true
+
+      - name: Build release executable
+        run: cargo build --locked --release -p slint-demo --no-default-features
+
+      - name: Determine package version
+        id: package-version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "slint-demo") | .version')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Package unsigned macOS app bundle
+        env:
+          APP_VERSION: ${{ steps.package-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          bundle="target/release/bundle/slint-demo.app"
+          rm -rf "target/release/bundle"
+          mkdir -p "${bundle}/Contents/MacOS"
+          cp target/release/slint-demo "${bundle}/Contents/MacOS/slint-demo"
+          chmod +x "${bundle}/Contents/MacOS/slint-demo"
+          cat > "${bundle}/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>slint-demo</string>
+            <key>CFBundleDisplayName</key>
+            <string>slint-demo</string>
+            <key>CFBundleIdentifier</key>
+            <string>dev.slint-agent.desktop</string>
+            <key>CFBundleExecutable</key>
+            <string>slint-demo</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${APP_VERSION}</string>
+            <key>CFBundleVersion</key>
+            <string>${APP_VERSION}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>LSApplicationCategoryType</key>
+            <string>public.app-category.productivity</string>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "${bundle}/Contents/Info.plist"
+          test -x "${bundle}/Contents/MacOS/slint-demo"
+          file "${bundle}/Contents/MacOS/slint-demo"
+
+      - name: Create unsigned macOS artifact
+        run: |
+          set -euo pipefail
+          mkdir -p target/release-artifacts/macos-arm64
+          cd target/release/bundle
+          ditto -c -k --keepParent "slint-demo.app" "../../release-artifacts/macos-arm64/slint-demo-macos-arm64-unsigned.zip"
+
+      - name: Generate macOS SBOM and checksums
+        run: |
+          set -euo pipefail
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx --format json --all --all-features --target all
+          cp crates/slint-demo/slint-demo.cdx.json target/release-artifacts/macos-arm64/slint-demo.cyclonedx.json
+          cd target/release-artifacts/macos-arm64
+          shasum -a 256 slint-demo-macos-arm64-unsigned.zip slint-demo.cyclonedx.json > SHA256SUMS.txt
+
+      - name: Upload unsigned macOS validation artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: slint-demo-macos-arm64-unsigned-test-release
+          path: target/release-artifacts/macos-arm64/*
+          if-no-files-found: error
+
+      - name: Attest unsigned macOS validation artifact
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: target/release-artifacts/macos-arm64/*

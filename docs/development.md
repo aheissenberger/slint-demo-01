@@ -30,10 +30,13 @@ The development image also installs the pinned `cargo-watch` version used by
 the desktop launcher; Windows packaging pins `cargo-wix` in CI for
 reproducible installer builds. The supported macOS and Windows workflows also
 run formatting, strict feature-complete linting, the complete test suite, and
-a pinned `cargo-audit` dependency scan. Windows is the primary release target:
-its workflow additionally builds, validates, installs, and uninstalls the MSI
-on a native Windows runner. Linux is used only for development tooling and is
-not a release build target.
+repository static contract checks where appropriate. Windows is the primary
+release target: its workflow additionally builds, validates, installs, launches
+the installed unsigned EXE long enough to confirm it stays alive, and uninstalls
+the MSI on a native Windows runner. Linux is used only for development tooling
+and supply-chain auditing and is not a release build target.
+Rust dependency policy lives in `deny.toml`; `cargo-deny` runs in the Windows
+CI workflow and in the scheduled/manual supply-chain audit workflow.
 
 The agent API contract is derived from the Slint source files. The
 `slint-contract` helper compiles `ui/app.slint` with the official Slint
@@ -125,8 +128,23 @@ the Start Menu shortcut edit, German language settings, German license text,
 and the `$(sys.SOURCEFILEDIR)License.rtf` source paths afterward since
 `init --force` overwrites `main.wxs`.
 The Windows workflow runs on pushes to `main` and pull requests. The macOS
-workflow is a secondary verification build for those events and creates only
-unsigned inspection artifacts; it signs, notarizes, and publishes a
-Gatekeeper-compatible distributable only for version tags matching `v*`.
+workflow is a secondary verification build for those events and creates
+unsigned inspection artifacts. For `v*` tags it signs and notarizes only when
+the complete Apple signing configuration, including `APPLE_ID`, is available;
+otherwise it reports a warning and retains the unsigned artifact.
+
+To enable signed and notarized macOS artifacts, configure these GitHub
+repository or protected-environment secrets: `APPLE_CERTIFICATE_BASE64`
+(Base64 `.p12` Developer ID Application certificate including private key),
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPER_ID_APPLICATION`, `APPLE_ID`,
+`APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`. See
+[README.md](../README.md#enabling-macos-signing-and-notarization) for the
+required formats and secret-handling guidance.
+The separate "Test release artifacts" workflow can be run manually or by
+pushing a `v*` tag to produce unsigned test artifacts without certificate or
+code-signing requirements. It uploads Windows EXE/MSI and unsigned macOS ZIP
+artifacts with SHA-256 checksums, CycloneDX SBOMs, and GitHub build-provenance
+attestations. These artifacts are for release validation; they are not signed
+end-user installers.
 The Rust toolchain is pinned in `rust-toolchain.toml`; update that file and the
 matching DevContainer installation command together when upgrading Rust.

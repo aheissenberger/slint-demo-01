@@ -5,12 +5,17 @@ pub use reducer::{
     ActiveDialog, AppAction, AppEffect, AppEvent, AppReducer, AppState, ApplicationError,
     CommandResult, ThemeMode,
 };
-pub use use_cases::{AppRepository, AppService, SubmissionPayload};
+pub use use_cases::{
+    AppRepository, AppService, Clock, IdGenerator, SubmissionPayload, SystemClock, UuidV7Generator,
+};
 
 use std::sync::{
-    mpsc::{self, Receiver, Sender},
+    mpsc::{self, Receiver, Sender, SyncSender, TrySendError},
     Arc, Mutex,
 };
+use std::thread;
+
+const SUBMISSION_QUEUE_CAPACITY: usize = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateUpdate {
@@ -21,36 +26,41 @@ pub struct StateUpdate {
 #[derive(Clone)]
 pub struct AppStateStore<R> {
     service: AppService<R>,
+    publisher: StatePublisher,
+    submission_sender: SyncSender<SubmissionPayload>,
+}
+
+#[derive(Clone)]
+struct StatePublisher {
     state: Arc<Mutex<AppState>>,
     subscribers: Arc<Mutex<Vec<Sender<StateUpdate>>>>,
 }
 
 impl<R> AppStateStore<R>
 where
-    R: AppRepository + Clone,
+    R: AppRepository + Clone + Send + 'static,
 {
     pub fn new(service: AppService<R>) -> Self {
-        Self {
-            service,
+        let publisher = StatePublisher {
             state: Arc::new(Mutex::new(AppState::new())),
             subscribers: Arc::new(Mutex::new(Vec::new())),
+        };
+        let (submission_sender, submission_receiver) =
+            mpsc::sync_channel(SUBMISSION_QUEUE_CAPACITY);
+        Self::start_submission_worker(service.clone(), publisher.clone(), submission_receiver);
+        Self {
+            service,
+            publisher,
+            submission_sender,
         }
     }
 
     pub fn current_state(&self) -> Result<AppState, ApplicationError> {
-        self.state
-            .lock()
-            .map(|state| state.clone())
-            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))
+        self.publisher.current_state()
     }
 
     pub fn subscribe(&self) -> Result<Receiver<StateUpdate>, ApplicationError> {
-        let (sender, receiver) = mpsc::channel();
-        self.subscribers
-            .lock()
-            .map_err(|_| ApplicationError::Repository("Abonnementsperre beschädigt".into()))?
-            .push(sender);
-        Ok(receiver)
+        self.publisher.subscribe()
     }
 
     pub fn dispatch(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
@@ -62,22 +72,26 @@ where
     }
 
     pub fn submit(&self) -> Result<CommandResult, ApplicationError> {
-        let input = self.current_state()?.input;
-        self.publish_event(AppEvent::SubmissionStarted)?;
-        let result = self.service.submit(SubmissionPayload { value: input });
-        let message = match result {
-            Ok(()) => self.publish_event(AppEvent::SubmissionSucceeded)?,
-            Err(error) => {
-                self.publish_event(AppEvent::SubmissionFailed {
+        let (payload, started) = self.publisher.begin_submission()?;
+        match self.submission_sender.try_send(payload) {
+            Ok(()) => Ok(started),
+            Err(TrySendError::Full(_)) => {
+                let error =
+                    ApplicationError::Repository("Übermittlungsdienst ist ausgelastet".into());
+                self.publisher.publish_event(AppEvent::SubmissionFailed {
                     message: error.to_string(),
                 })?;
-                return Err(error);
+                Err(error)
             }
-        };
-        Ok(CommandResult {
-            message,
-            state: self.current_state()?,
-        })
+            Err(TrySendError::Disconnected(_)) => {
+                let error =
+                    ApplicationError::Repository("Übermittlungsdienst ist nicht verfügbar".into());
+                self.publisher.publish_event(AppEvent::SubmissionFailed {
+                    message: error.to_string(),
+                })?;
+                Err(error)
+            }
+        }
     }
 
     fn reduce(&self, action: AppAction) -> Result<CommandResult, ApplicationError> {
@@ -88,26 +102,84 @@ where
             AppAction::RequestFilePicker => Some(AppEffect::OpenNativeFilePicker),
             _ => None,
         };
-        let message = match self.update(effect, |state| AppReducer::apply(state, &action)) {
-            Ok(message) => message,
+        match self
+            .publisher
+            .update(effect, |state| AppReducer::apply(state, &action))
+        {
+            Ok((message, state)) => Ok(CommandResult { message, state }),
             Err(error) => {
-                self.publish_event(AppEvent::ActionFailed {
+                self.publisher.publish_event(AppEvent::ActionFailed {
                     message: error.to_string(),
                 })?;
-                return Err(error);
+                Err(error)
             }
-        };
-        Ok(CommandResult {
-            message,
-            state: self.current_state()?,
-        })
+        }
     }
 
-    fn publish_event(&self, event: AppEvent) -> Result<String, ApplicationError> {
-        self.update(None, |state| Ok(AppReducer::apply_event(state, &event)))
+    fn start_submission_worker(
+        service: AppService<R>,
+        publisher: StatePublisher,
+        receiver: Receiver<SubmissionPayload>,
+    ) {
+        thread::spawn(move || {
+            while let Ok(payload) = receiver.recv() {
+                let event = match service.submit(payload) {
+                    Ok(()) => AppEvent::SubmissionSucceeded,
+                    Err(error) => AppEvent::SubmissionFailed {
+                        message: error.to_string(),
+                    },
+                };
+                if let Err(error) = publisher.publish_event(event) {
+                    tracing::error!(%error, "Übermittlungsstatus konnte nicht veröffentlicht werden");
+                }
+            }
+        });
+    }
+}
+
+impl StatePublisher {
+    fn begin_submission(&self) -> Result<(SubmissionPayload, CommandResult), ApplicationError> {
+        let ((message, input), state) = self.update(None, |state| {
+            if state.busy {
+                return Err(domain::DomainError::InvalidState.into());
+            }
+            let input = state.input.clone();
+            let message = AppReducer::apply_event(state, &AppEvent::SubmissionStarted);
+            Ok((message, input))
+        })?;
+        Ok((
+            SubmissionPayload { value: input },
+            CommandResult { message, state },
+        ))
     }
 
-    fn update<T, F>(&self, effect: Option<AppEffect>, update: F) -> Result<T, ApplicationError>
+    fn current_state(&self) -> Result<AppState, ApplicationError> {
+        self.state
+            .lock()
+            .map(|state| state.clone())
+            .map_err(|_| ApplicationError::Repository("Zustandssperre beschädigt".into()))
+    }
+
+    fn subscribe(&self) -> Result<Receiver<StateUpdate>, ApplicationError> {
+        let (sender, receiver) = mpsc::channel();
+        self.subscribers
+            .lock()
+            .map_err(|_| ApplicationError::Repository("Abonnementsperre beschädigt".into()))?
+            .push(sender);
+        Ok(receiver)
+    }
+
+    fn publish_event(&self, event: AppEvent) -> Result<CommandResult, ApplicationError> {
+        let (message, state) =
+            self.update(None, |state| Ok(AppReducer::apply_event(state, &event)))?;
+        Ok(CommandResult { message, state })
+    }
+
+    fn update<T, F>(
+        &self,
+        effect: Option<AppEffect>,
+        update: F,
+    ) -> Result<(T, AppState), ApplicationError>
     where
         F: FnOnce(&mut AppState) -> Result<T, ApplicationError>,
     {
@@ -118,7 +190,7 @@ where
         let previous = state.clone();
         let result = update(&mut state)?;
         if *state == previous && effect.is_none() {
-            return Ok(result);
+            return Ok((result, state.clone()));
         }
 
         if *state != previous {
@@ -132,18 +204,48 @@ where
             .lock()
             .map_err(|_| ApplicationError::Repository("Abonnementsperre beschädigt".into()))?;
         let update = StateUpdate {
-            state: updated_state,
+            state: updated_state.clone(),
             effect,
         };
         subscribers.retain(|subscriber| subscriber.send(update.clone()).is_ok());
-        Ok(result)
+        Ok((result, updated_state))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::{AppSettings, SubmissionRecord};
+    use chrono::{DateTime, TimeZone, Utc};
+    use domain::{AppId, AppSettings, SubmissionRecord};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Condvar,
+    };
+    use std::time::Duration;
+
+    const TEST_ID: &str = "01890f3e-8c00-7b9a-a6d1-2f0a3b4c5d6e";
+
+    #[derive(Clone)]
+    struct FixedClock {
+        now: DateTime<Utc>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Clock for FixedClock {
+        fn now(&self) -> DateTime<Utc> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.now
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct FixedIdGenerator;
+
+    impl IdGenerator for FixedIdGenerator {
+        fn generate(&self, _created_at: DateTime<Utc>) -> Result<AppId, ApplicationError> {
+            AppId::new(TEST_ID).map_err(ApplicationError::from)
+        }
+    }
 
     #[derive(Clone, Default)]
     struct FakeRepository {
@@ -171,9 +273,75 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct BlockingRepository {
+        gate: Arc<(Mutex<BlockingRepositoryState>, Condvar)>,
+    }
+
+    #[derive(Default)]
+    struct BlockingRepositoryState {
+        entered: bool,
+        released: bool,
+        records: Vec<SubmissionRecord>,
+    }
+
+    impl AppRepository for BlockingRepository {
+        fn load_settings(&self) -> Result<AppSettings, ApplicationError> {
+            Ok(AppSettings::default())
+        }
+
+        fn save_submission(&self, submission: SubmissionRecord) -> Result<(), ApplicationError> {
+            let (lock, changed) = &*self.gate;
+            let mut state = lock
+                .lock()
+                .map_err(|_| ApplicationError::Repository("Testsperre beschädigt".into()))?;
+            state.entered = true;
+            changed.notify_all();
+            while !state.released {
+                state = changed
+                    .wait(state)
+                    .map_err(|_| ApplicationError::Repository("Testsperre beschädigt".into()))?;
+            }
+            state.records.push(submission);
+            Ok(())
+        }
+
+        fn list_submissions(&self) -> Result<Vec<SubmissionRecord>, ApplicationError> {
+            let (lock, _) = &*self.gate;
+            lock.lock()
+                .map(|state| state.records.clone())
+                .map_err(|_| ApplicationError::Repository("Testsperre beschädigt".into()))
+        }
+    }
+
+    fn fixed_time() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 9, 17, 19, 10, 29)
+            .single()
+            .unwrap()
+    }
+
+    fn test_service(repository: FakeRepository) -> AppService<FakeRepository> {
+        AppService::with_dependencies(
+            repository,
+            FixedClock {
+                now: fixed_time(),
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+            FixedIdGenerator,
+        )
+    }
+
     #[test]
-    fn submitting_persists_a_record_in_the_repository() {
-        let service = AppService::new(FakeRepository::default());
+    fn submitting_persists_a_record_with_one_captured_time_and_injected_id() {
+        let clock_calls = Arc::new(AtomicUsize::new(0));
+        let service = AppService::with_dependencies(
+            FakeRepository::default(),
+            FixedClock {
+                now: fixed_time(),
+                calls: Arc::clone(&clock_calls),
+            },
+            FixedIdGenerator,
+        );
         service
             .submit(SubmissionPayload {
                 value: "Test".into(),
@@ -183,11 +351,14 @@ mod tests {
         let records = service.list_records().unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].description, "Test");
+        assert_eq!(records[0].id.as_str(), TEST_ID);
+        assert_eq!(records[0].created_at, fixed_time());
+        assert_eq!(clock_calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
     fn state_store_is_shared_by_commands_and_subscribers() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
 
         store
@@ -203,7 +374,7 @@ mod tests {
 
     #[test]
     fn submit_availability_uses_the_same_trimmed_input_rule_as_submission() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
 
         store
             .dispatch(AppAction::SetInput {
@@ -221,10 +392,27 @@ mod tests {
     }
 
     #[test]
-    fn state_store_rejects_submit_without_input() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
-        let error = store.submit().unwrap_err();
-        assert!(error.to_string().contains("Wert darf nicht leer sein"));
+    fn state_store_publishes_asynchronous_submission_failure() {
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
+        let updates = store.subscribe().unwrap();
+
+        let result = store.submit().unwrap();
+        assert_eq!(result.state.status, domain::AppStatus::Busy);
+        assert_eq!(
+            updates
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .state
+                .status,
+            domain::AppStatus::Busy
+        );
+        let failed = updates.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(failed.state.status, domain::AppStatus::Error);
+        assert_eq!(
+            failed.state.error_message.as_deref(),
+            Some("Domänenfehler: Wert darf nicht leer sein")
+        );
+
         let state = store.current_state().unwrap();
         assert!(!state.busy);
         assert_eq!(state.status, domain::AppStatus::Error);
@@ -236,7 +424,7 @@ mod tests {
 
     #[test]
     fn state_store_publishes_submission_lifecycle() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
         store
             .dispatch(AppAction::SetInput {
@@ -246,21 +434,94 @@ mod tests {
         updates.recv().unwrap();
 
         let result = store.submit().unwrap();
-        assert_eq!(result.state.status, domain::AppStatus::Success);
-        assert!(!result.state.busy);
+        assert_eq!(result.state.status, domain::AppStatus::Busy);
+        assert!(result.state.busy);
         assert_eq!(
-            updates.recv().unwrap().state.status,
+            updates
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .state
+                .status,
             domain::AppStatus::Busy
         );
         assert_eq!(
-            updates.recv().unwrap().state.status,
+            updates
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .state
+                .status,
             domain::AppStatus::Success
         );
+        let state = store.current_state().unwrap();
+        assert_eq!(state.status, domain::AppStatus::Success);
+        assert!(!state.busy);
+    }
+
+    #[test]
+    fn submission_repository_work_runs_on_the_bounded_worker() {
+        let repository = BlockingRepository::default();
+        let service = AppService::with_dependencies(
+            repository.clone(),
+            FixedClock {
+                now: fixed_time(),
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+            FixedIdGenerator,
+        );
+        let store = AppStateStore::new(service);
+        let updates = store.subscribe().unwrap();
+        store
+            .dispatch(AppAction::SetInput {
+                value: "Test".into(),
+            })
+            .unwrap();
+        updates.recv_timeout(Duration::from_secs(1)).unwrap();
+
+        let caller = store.clone();
+        let (result_sender, result_receiver) = mpsc::channel();
+        let submit_thread = thread::spawn(move || {
+            result_sender.send(caller.submit()).unwrap();
+        });
+        let result = result_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("submit must return before repository work completes")
+            .unwrap();
+        assert_eq!(result.state.status, domain::AppStatus::Busy);
+        assert_eq!(
+            updates
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .state
+                .status,
+            domain::AppStatus::Busy
+        );
+
+        let (lock, changed) = &*repository.gate;
+        let state = lock.lock().unwrap();
+        let (mut state, wait_result) = changed
+            .wait_timeout_while(state, Duration::from_secs(1), |state| !state.entered)
+            .unwrap();
+        assert!(!wait_result.timed_out());
+        assert!(state.records.is_empty());
+        state.released = true;
+        changed.notify_all();
+        drop(state);
+
+        submit_thread.join().unwrap();
+        assert_eq!(
+            updates
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .state
+                .status,
+            domain::AppStatus::Success
+        );
+        assert_eq!(repository.list_submissions().unwrap().len(), 1);
     }
 
     #[test]
     fn state_store_does_not_publish_unchanged_state() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
 
         store.dispatch(AppAction::OpenAbout).unwrap();
@@ -275,7 +536,7 @@ mod tests {
 
     #[test]
     fn settings_and_theme_mode_share_the_application_state() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
 
         assert_eq!(store.current_state().unwrap().theme_mode, ThemeMode::System);
         store.dispatch(AppAction::OpenSettings).unwrap();
@@ -312,7 +573,7 @@ mod tests {
 
     #[test]
     fn focusing_a_control_publishes_a_transient_effect_without_mutating_state() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
 
         let result = store
@@ -333,7 +594,7 @@ mod tests {
 
     #[test]
     fn state_store_rejects_invalid_file_selection_paths() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
         let error = store
             .dispatch(AppAction::SelectFile { path: "\0".into() })
             .unwrap_err();
@@ -343,7 +604,7 @@ mod tests {
 
     #[test]
     fn file_picker_request_is_published_as_a_transient_effect() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
         let updates = store.subscribe().unwrap();
 
         store.dispatch(AppAction::RequestFilePicker).unwrap();
@@ -366,7 +627,7 @@ mod tests {
 
     #[test]
     fn rejected_actions_are_reported_through_canonical_state() {
-        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+        let store = AppStateStore::new(test_service(FakeRepository::default()));
 
         let error = store
             .dispatch(AppAction::SelectFile { path: "\0".into() })

@@ -60,16 +60,16 @@
 
     <Product
         Id='*'
-        Name='slint-demo'
+        Name='Slint Agent Desktop'
         UpgradeCode='9C4ED75C-88C5-4CE9-9307-CCEB6AB43B75'
-        Manufacturer='Copilot'
+        Manufacturer='aheissenberger'
         Language='1031'
         Codepage='1252'
         Version='$(var.Version)'>
 
         <Package Id='*'
             Keywords='Installationsprogramm'
-            Manufacturer='Copilot'
+            Manufacturer='aheissenberger'
             InstallerVersion='450'
             Languages='1031'
             Compressed='yes'
@@ -82,11 +82,13 @@
             DowngradeErrorMessage='Eine neuere Version von [ProductName] ist bereits installiert. Das Setup wird beendet.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='slint-demo-Installation'/>
+        <Property Id='DiskPrompt' Value='Slint-Agent-Desktop-Installation'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/aheissenberger/slint-demo-01/issues'/>
+        <Property Id='ARPURLINFOABOUT' Value='https://github.com/aheissenberger/slint-demo-01'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='slint-demo'>
+                <Directory Id='APPLICATIONFOLDER' Name='Slint Agent Desktop'>
                     <!--
                       Disabling the license sidecar file in the installer is a two step process:
 
@@ -129,11 +131,11 @@
               directory/component pair disables the shortcut entirely.
             -->
             <Directory Id='ProgramMenuFolder'>
-                <Directory Id='ApplicationProgramsFolder' Name='slint-demo'>
+                <Directory Id='ApplicationProgramsFolder' Name='Slint Agent Desktop'>
                     <Component Id='ApplicationShortcut' Guid='*'>
                         <Shortcut Id='ApplicationStartMenuShortcut'
-                            Name='slint-demo'
-                            Description='Slint-Demo-Desktopanwendung'
+                            Name='Slint Agent Desktop'
+                            Description='Agent-betriebene Slint-Desktopanwendung'
                             Target='[Bin]slint-demo.exe'
                             WorkingDirectory='APPLICATIONFOLDER'/>
                         <RemoveFolder Id='CleanUpShortCut' Directory='ApplicationProgramsFolder' On='uninstall'/>
@@ -188,18 +190,6 @@
         -->
         <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
         <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
-
-        
-        <!--
-          Adding a URL to Add/Remove Programs control panel listing for the
-          application is a two step process:
-
-          1. Uncomment the following `Property` tag with the "ARPHELPLINK" Id
-             attribute value.
-          2. Change the value for `Value` attribute of the following
-             `Property` tag to a valid URL.
-        -->
-        <!--<Property Id='ARPHELPLINK' Value='ChangeMe'/>-->
 
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>

@@ -16,20 +16,20 @@ concurrency:
 
 jobs:
   build:
-    name: Build Windows desktop app
+    name: Build and test Windows desktop app
     runs-on: windows-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: 1.98.1
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "."
           shared-key: windows-x86_64
@@ -39,23 +39,36 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Check default production build posture
+        run: cargo check --locked --workspace --all-targets
+
       - name: Lint all features
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Validate Slint and agent API static contract
+        shell: pwsh
+        run: |
+          cargo check --locked -p slint-demo --all-targets --features agent-api
+          cargo run --locked --quiet -p slint-contract --bin slint-contract-check -- ui > $env:RUNNER_TEMP\slint-contract.json
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          python scripts/agent-api-check
 
       - name: Run all tests
         run: cargo test --locked --workspace --all-features
 
-      - name: Audit dependencies
+      - name: Audit dependency policy
         shell: pwsh
         run: |
-          cargo install cargo-audit --version 0.22.2 --locked
-          cargo audit --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+          cargo deny check advisories bans licenses sources
 
       - name: Build release executable
         run: cargo build --locked --release -p slint-demo --no-default-features
 
       - name: Upload Windows executable
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: slint-demo-windows-x86_64
           path: target/release/slint-demo.exe
@@ -106,6 +119,7 @@ jobs:
         run: |
           $installer = Resolve-Path target/wix/slint-demo.msi
           $application = Join-Path $env:ProgramFiles 'slint-demo\bin\slint-demo.exe'
+          $smokeProcess = $null
 
           $installProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
             '/i', $installer, '/qn', '/norestart'
@@ -117,18 +131,30 @@ jobs:
             throw "Installed application was not found at $application."
           }
 
-          $uninstallProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
-            '/x', $installer, '/qn', '/norestart'
-          )
-          if ($uninstallProcess.ExitCode -ne 0) {
-            throw "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode)."
-          }
-          if (Test-Path $application) {
-            throw "Installed application remained after MSI uninstallation."
+          try {
+            $smokeProcess = Start-Process -FilePath $application -PassThru
+            Start-Sleep -Seconds 5
+            if ($smokeProcess.HasExited) {
+              throw "Installed application exited during smoke test with code $($smokeProcess.ExitCode)."
+            }
+          } finally {
+            if ($null -ne $smokeProcess -and -not $smokeProcess.HasExited) {
+              Stop-Process -Id $smokeProcess.Id -Force
+              $smokeProcess.WaitForExit(10000) | Out-Null
+            }
+            $uninstallProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
+              '/x', $installer, '/qn', '/norestart'
+            )
+            if ($uninstallProcess.ExitCode -ne 0) {
+              throw "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode)."
+            }
+            if (Test-Path $application) {
+              throw "Installed application remained after MSI uninstallation."
+            }
           }
 
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: slint-demo-windows-x86_64-installer
           path: target/wix/slint-demo.msi

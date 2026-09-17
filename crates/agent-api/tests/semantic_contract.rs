@@ -1,8 +1,19 @@
 use agent_api::{ui_component_metadata, AgentActionRequest, AgentApi, AgentCommandRequest};
 use infrastructure::MemoryRepository;
+use std::{thread, time::Duration};
 
 fn api() -> AgentApi<MemoryRepository> {
     AgentApi::new(MemoryRepository::with_default_settings().build_service())
+}
+
+fn wait_for_submission(api: &AgentApi<MemoryRepository>) {
+    for _ in 0..50 {
+        if !api.get_state().expect("submission state").busy {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("Übermittlung wurde nicht innerhalb von 500 ms abgeschlossen");
 }
 
 #[test]
@@ -70,6 +81,7 @@ fn semantic_contract_exposes_stable_controls_and_state_transitions() {
         arguments: serde_json::Value::Null,
     })
     .expect("submit command");
+    wait_for_submission(&api);
     assert_eq!(api.get_state().expect("state").status, "erfolgreich");
 }
 
@@ -95,6 +107,42 @@ fn disabled_submit_cannot_be_activated_through_the_agent_api() {
         api.get_state().expect("state after rejected click").status,
         "bereit"
     );
+}
+
+#[test]
+fn missing_required_agent_values_are_rejected_without_mutating_state() {
+    let api = api();
+    let revision = api.revision().expect("initial revision");
+
+    for request in [
+        AgentCommandRequest {
+            command: "set_input".into(),
+            arguments: serde_json::json!({}),
+        },
+        AgentCommandRequest {
+            command: "select_file".into(),
+            arguments: serde_json::json!({}),
+        },
+        AgentCommandRequest {
+            command: "set_theme".into(),
+            arguments: serde_json::json!({}),
+        },
+    ] {
+        let error = api
+            .execute_command(request)
+            .expect_err("missing command argument must be rejected");
+        assert!(error.to_string().contains("Zeichenfolgenargument fehlt"));
+    }
+
+    let error = api
+        .execute_ui_action(AgentActionRequest {
+            action: "set_value".into(),
+            id: "main.input".into(),
+            value: None,
+        })
+        .expect_err("missing action value must be rejected");
+    assert!(error.to_string().contains("Wert für Element fehlt"));
+    assert_eq!(api.revision().expect("unchanged revision"), revision);
 }
 
 #[test]
@@ -140,6 +188,13 @@ fn about_menu_and_dialog_are_part_of_the_stable_semantic_contract() {
             action: "set_value".into(),
             id: "main.input".into(),
             value: Some("blocked".into()),
+        })
+        .is_err());
+    assert!(api
+        .execute_ui_action(AgentActionRequest {
+            action: "click".into(),
+            id: "main.reset".into(),
+            value: None,
         })
         .is_err());
 

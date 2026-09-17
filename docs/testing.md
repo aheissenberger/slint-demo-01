@@ -19,6 +19,41 @@ and runs as part of `./scripts/test`. The runtime checks in
 `tests/integration/semantic_agent.sh` and `tests/ui/semantic_smoke.sh` are run by
 `./scripts/e2e` after the desktop and agent API are available.
 
+## CI and release validation
+Windows is the primary CI and release validation platform. Its workflow runs the
+repository static Slint/agent API contract checks, builds the production-shaped
+binary without the development agent API feature, packages the MSI, installs it,
+launches the installed unsigned EXE briefly as a smoke test, and uninstalls the
+MSI. macOS remains a secondary validation platform.
+
+Supply-chain checks use `cargo-deny` with the policy in `deny.toml`. The policy
+is enforced in CI and by the scheduled/manual supply-chain audit workflow. The
+manual/tagged unsigned test release workflow also generates SHA-256 checksums,
+CycloneDX SBOMs, and GitHub build-provenance attestations for its artifacts.
+
+### Native Windows release-validation checklist
+
+Linux/Xvfb checks protect semantic and visual regressions, but native Windows
+validation remains authoritative for the Windows-targeted UI. Before sharing a
+test-release MSI outside the development team, install it on a clean Windows
+10 or Windows 11 system and verify:
+
+1. the MSI installs, launches, upgrades, and uninstalls cleanly;
+2. the application uses native window controls, supports resize/snap, and
+   renders correctly at 100%, 150%, and 200% display scaling;
+3. keyboard navigation reaches every control, Enter/Space activate buttons,
+   About opens with focus on **Schließen**, Escape closes it, and focus returns
+   to the invoking menu;
+4. modal dialogs block background input and remain synchronized with the
+   visible application state;
+5. system, light, and dark theme selections remain legible; and
+6. Windows high-contrast mode preserves readable content, focus indication,
+   and control boundaries.
+
+Unsigned test builds are expected to show Windows publisher or SmartScreen
+warnings. Testers should obtain them only from the project’s CI artifacts and
+verify the accompanying `SHA256SUMS.txt` file.
+
 ## UI smoke tests
 The `tests/ui` checks semantic UI validation through the app inspection and
 action API, confirms that the real `desktop` window exists on X11, and captures
