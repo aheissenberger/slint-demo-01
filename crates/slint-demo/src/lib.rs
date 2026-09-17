@@ -185,6 +185,16 @@ impl DesktopApp {
             .map_err(|error| DesktopAppError::Ui(error.to_string()))
     }
 
+    pub fn verify_installation() -> Result<(), DesktopAppError> {
+        let runtime_storage = RuntimeStorage::open().map_err(DesktopAppError::Runtime)?;
+        let _single_instance = runtime_storage
+            .acquire_single_instance()
+            .map_err(DesktopAppError::Runtime)?;
+        let _app = Self::new()?;
+        tracing::info!("Installationsprüfung erfolgreich abgeschlossen");
+        Ok(())
+    }
+
     #[cfg(feature = "agent-api")]
     fn start_agent_api(app: &Self) {
         let api = app.agent_api.clone();

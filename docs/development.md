@@ -32,9 +32,12 @@ reproducible installer builds. The supported macOS and Windows workflows also
 run formatting, strict feature-complete linting, the complete test suite, and
 repository static contract checks where appropriate. Windows is the primary
 release target: its workflow additionally builds, validates, installs, launches
-the installed unsigned EXE long enough to confirm it stays alive, and uninstalls
-the MSI on a native Windows runner. Linux is used only for development tooling
-and supply-chain auditing and is not a release build target.
+the installed unsigned EXE in headless installation-verification mode, and
+uninstalls the MSI on a native Windows runner. The verification initializes the
+runtime directory, process lock, SQLite database, and migrations. A visible GUI
+launch is intentionally not used because GitHub-hosted Windows runners provide
+no interactive desktop. Linux is used only for development tooling and
+supply-chain auditing and is not a release build target.
 Rust dependency policy lives in `deny.toml`; `cargo-deny` runs in the Windows
 CI workflow and in the scheduled/manual supply-chain audit workflow.
 

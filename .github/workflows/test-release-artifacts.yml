@@ -59,7 +59,7 @@ jobs:
       - name: Ensure cargo-wix is available
         shell: pwsh
         env:
-          CARGO_WIX_VERSION: "0.3.8"
+          CARGO_WIX_VERSION: "0.3.9"
         run: |
           $installed = $null
           if (Get-Command cargo-wix -ErrorAction SilentlyContinue) {
@@ -68,7 +68,7 @@ jobs:
             $installed = (cargo wix --version) -split '\s+' | Select-Object -Last 1
           }
           if ($installed -ne $env:CARGO_WIX_VERSION) {
-            cargo install cargo-wix --version $env:CARGO_WIX_VERSION --locked --force
+            cargo +1.98.1 install cargo-wix --version $env:CARGO_WIX_VERSION --locked --force
             if ($LASTEXITCODE -ne 0) {
               throw "cargo-wix installation failed with exit code $LASTEXITCODE."
             }
@@ -78,45 +78,51 @@ jobs:
       - name: Build Windows installer (MSI)
         shell: pwsh
         run: |
-          # --no-build reuses the release binary produced above with
-          # --no-default-features, so the MSI never bundles the agent-api server.
-          cargo wix --package slint-demo --culture de-DE --nocapture --no-build --output target/wix/slint-demo.msi
+          # Reuse the production binary built with --no-default-features.
+          # --target-bin-dir makes the externally managed build explicit and
+          # avoids cargo-wix's warning for an ambiguous --no-build invocation.
+          cargo wix --package slint-demo --culture de-DE --nocapture --no-build `
+            --target-bin-dir target/release --output target/wix/slint-demo.msi
 
       - name: Smoke-test unsigned Windows installer and EXE
         shell: pwsh
         run: |
           $installer = Resolve-Path target/wix/slint-demo.msi
+          $installLog = Join-Path $env:RUNNER_TEMP 'slint-demo-msi-install.log'
+          $uninstallLog = Join-Path $env:RUNNER_TEMP 'slint-demo-msi-uninstall.log'
+          $dataDirectory = Join-Path $env:RUNNER_TEMP 'slint-demo-smoke-data'
           # Must match APPLICATIONFOLDER/Bin in crates/slint-demo/wix/main.wxs.
           $application = Join-Path $env:ProgramFiles 'Slint Agent Desktop\bin\slint-demo.exe'
-          $smokeProcess = $null
           $uninstallFailure = $null
 
           $installProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
-            '/i', $installer, '/qn', '/norestart'
+            '/i', $installer, '/qn', '/norestart', '/l*v', $installLog
           )
           if ($installProcess.ExitCode -ne 0) {
-            throw "MSI installation failed with exit code $($installProcess.ExitCode)."
+            throw "MSI installation failed with exit code $($installProcess.ExitCode). Log: $installLog"
           }
 
           try {
             if (-not (Test-Path $application -PathType Leaf)) {
               throw "Installed application was not found at $application."
             }
-            $smokeProcess = Start-Process -FilePath $application -PassThru
-            Start-Sleep -Seconds 5
-            if ($smokeProcess.HasExited) {
-              throw "Installed application exited during smoke test with code $($smokeProcess.ExitCode)."
+
+            # GitHub-hosted Windows runners have no interactive desktop. This
+            # verifies the installed EXE's runtime, lock, database, and migrations
+            # without treating unavailable GUI infrastructure as an app failure.
+            $env:SLINT_DEMO_DATA_DIR = $dataDirectory
+            $selfTestProcess = Start-Process -FilePath $application -PassThru -Wait -NoNewWindow `
+              -ArgumentList '--verify-installation'
+            if ($selfTestProcess.ExitCode -ne 0) {
+              throw "Installed application self-test failed with exit code $($selfTestProcess.ExitCode)."
             }
           } finally {
-            if ($null -ne $smokeProcess -and -not $smokeProcess.HasExited) {
-              Stop-Process -Id $smokeProcess.Id -Force
-              $smokeProcess.WaitForExit(10000) | Out-Null
-            }
+            Remove-Item Env:\SLINT_DEMO_DATA_DIR -ErrorAction SilentlyContinue
             $uninstallProcess = Start-Process msiexec.exe -PassThru -Wait -NoNewWindow -ArgumentList @(
-              '/x', $installer, '/qn', '/norestart'
+              '/x', $installer, '/qn', '/norestart', '/l*v', $uninstallLog
             )
             if ($uninstallProcess.ExitCode -ne 0) {
-              $uninstallFailure = "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode)."
+              $uninstallFailure = "MSI uninstallation failed with exit code $($uninstallProcess.ExitCode). Log: $uninstallLog"
             } elseif (Test-Path $application) {
               $uninstallFailure = "Installed application remained after MSI uninstallation."
             }
@@ -128,10 +134,20 @@ jobs:
             throw $uninstallFailure
           }
 
+      - name: Upload Windows installer diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: slint-demo-release-installer-diagnostics
+          path: |
+            ${{ runner.temp }}/slint-demo-msi-install.log
+            ${{ runner.temp }}/slint-demo-msi-uninstall.log
+          if-no-files-found: ignore
+
       - name: Generate Windows SBOM and checksums
         shell: pwsh
         run: |
-          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo +1.98.1 install cargo-cyclonedx --version 0.5.9 --locked
           if ($LASTEXITCODE -ne 0) {
             throw "cargo-cyclonedx installation failed with exit code $LASTEXITCODE."
           }
@@ -209,7 +225,7 @@ jobs:
       - name: Generate macOS SBOM and checksums
         run: |
           set -euo pipefail
-          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo +1.98.1 install cargo-cyclonedx --version 0.5.9 --locked
           cargo cyclonedx --format json --all --all-features --target all
           cp crates/slint-demo/slint-demo.cdx.json target/release-artifacts/macos-arm64/slint-demo.cyclonedx.json
           cd target/release-artifacts/macos-arm64
