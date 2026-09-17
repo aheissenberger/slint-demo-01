@@ -42,6 +42,13 @@ development behavior deliberately bypasses the system dialog because it is not
 available in the VNC automation environment; builds without `agent-api` open
 the platform-native picker instead.
 
+The settings surface is reachable through
+`scripts/agent click file.settings`. While it is open, select the app theme
+with `settings.theme.system`, `settings.theme.light`, or
+`settings.theme.dark`, then close it with `settings.close`. The same operation
+is available as the `set_theme` command with a `mode` argument of `system`,
+`light`, or `dark`.
+
 Stable UI action errors use an application error envelope with a machine-readable
 `code` and a diagnostic `message`. Application commands and UI actions share the
 same `AgentApi` runtime, so they cannot diverge in business behavior.
@@ -157,7 +164,8 @@ reused.
   "screen": "main",
   "status": "bereit",
   "busy": false,
-  "error": null
+  "error": null,
+  "theme_mode": "system"
 }
 ```
 
@@ -171,10 +179,25 @@ reused.
     { "id": "main.selected-file", "role": "status", "enabled": true, "value": "", "accessible_label": "Ausgewählter Dateipfad" },
     { "id": "main.submit", "role": "button", "enabled": false, "accessible_label": "Senden" },
     { "id": "main.status", "role": "status", "enabled": true, "value": "bereit", "accessible_label": "Anwendungsstatus" },
+    { "id": "file.settings", "role": "menuitem", "enabled": true, "accessible_label": "Einstellungen" },
     { "id": "help.about", "role": "menuitem", "enabled": true, "accessible_label": "Über" }
   ]
 }
 ```
+
+## Settings and appearance
+
+The German `Datei` menu contains `Einstellungen`. It opens a modal Fluent
+settings surface with the `Darstellung` section and an `App-Design` radio
+group:
+
+- `settings.theme.system` follows the operating-system color scheme.
+- `settings.theme.light` forces the light color scheme.
+- `settings.theme.dark` forces the dark color scheme.
+
+The selected value is exposed as `theme_mode` in application state. Theme
+selection is intentionally in-memory, like the rest of the agent-facing state,
+and returns to `system` when the application restarts.
 
 ## About menu and dialog
 

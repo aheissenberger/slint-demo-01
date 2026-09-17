@@ -1,4 +1,4 @@
-use application::{AppAction, AppService, AppStateStore, ApplicationError};
+use application::{AppAction, AppService, AppStateStore, ApplicationError, ThemeMode};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -13,6 +13,7 @@ pub struct AgentStateResponse {
     pub status: String,
     pub busy: bool,
     pub error: Option<String>,
+    pub theme_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,9 +76,51 @@ const UI_COMPONENT_METADATA: &[(&str, UiComponentMetadata)] = &[
         },
     ),
     (
+        "file.settings",
+        UiComponentMetadata {
+            role: "menuitem",
+            actions: &["click"],
+        },
+    ),
+    (
         "help.about",
         UiComponentMetadata {
             role: "menuitem",
+            actions: &["click"],
+        },
+    ),
+    (
+        "settings.dialog",
+        UiComponentMetadata {
+            role: "dialog",
+            actions: &[],
+        },
+    ),
+    (
+        "settings.theme.system",
+        UiComponentMetadata {
+            role: "radio",
+            actions: &["click"],
+        },
+    ),
+    (
+        "settings.theme.light",
+        UiComponentMetadata {
+            role: "radio",
+            actions: &["click"],
+        },
+    ),
+    (
+        "settings.theme.dark",
+        UiComponentMetadata {
+            role: "radio",
+            actions: &["click"],
+        },
+    ),
+    (
+        "settings.close",
+        UiComponentMetadata {
+            role: "button",
             actions: &["click"],
         },
     ),
@@ -184,13 +227,14 @@ where
             status: state.status.to_string(),
             busy: state.busy,
             error: state.error_message,
+            theme_mode: state.theme_mode.as_str().to_string(),
         })
     }
 
     #[instrument(name = "agent.inspect_ui", skip(self), fields(component = "agent-api"))]
     pub fn inspect_ui(&self) -> Result<UiInspectionResponse, ApplicationError> {
         let state = self.store.current_state()?;
-        let main_controls_enabled = !state.is_about_open();
+        let main_controls_enabled = state.active_dialog.is_none();
         let mut elements = vec![
             element(
                 "main.input",
@@ -226,8 +270,36 @@ where
                 )),
                 "Anwendungsstatus",
             ),
+            element(
+                "file.settings",
+                main_controls_enabled,
+                None,
+                "Einstellungen",
+            ),
             element("help.about", main_controls_enabled, None, "Über"),
         ];
+        if state.is_settings_open() {
+            elements.push(element("settings.dialog", true, None, "Einstellungen"));
+            elements.push(element(
+                "settings.theme.system",
+                true,
+                Some((state.theme_mode == ThemeMode::System).to_string()),
+                "Systemeinstellung verwenden",
+            ));
+            elements.push(element(
+                "settings.theme.light",
+                true,
+                Some((state.theme_mode == ThemeMode::Light).to_string()),
+                "Hell",
+            ));
+            elements.push(element(
+                "settings.theme.dark",
+                true,
+                Some((state.theme_mode == ThemeMode::Dark).to_string()),
+                "Dunkel",
+            ));
+            elements.push(element("settings.close", true, None, "Schließen"));
+        }
         if state.is_about_open() {
             elements.push(element(
                 "about.dialog",
@@ -263,6 +335,18 @@ where
             "reset" => AppAction::Reset,
             "open_about" => AppAction::OpenAbout,
             "close_about" => AppAction::CloseAbout,
+            "open_settings" => AppAction::OpenSettings,
+            "close_settings" => AppAction::CloseSettings,
+            "set_theme" => {
+                let mode = request
+                    .arguments
+                    .get("mode")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                AppAction::SetThemeMode {
+                    mode: ThemeMode::parse(mode)?,
+                }
+            }
             "set_input" => {
                 let value = request
                     .arguments
@@ -330,9 +414,33 @@ where
             "click" if action.id == "help.about" => {
                 Ok(self.store.dispatch(AppAction::OpenAbout)?.message)
             }
+            "click" if action.id == "file.settings" => {
+                Ok(self.store.dispatch(AppAction::OpenSettings)?.message)
+            }
             "click" if action.id == "about.close" => {
                 Ok(self.store.dispatch(AppAction::CloseAbout)?.message)
             }
+            "click" if action.id == "settings.close" => {
+                Ok(self.store.dispatch(AppAction::CloseSettings)?.message)
+            }
+            "click" if action.id == "settings.theme.system" => Ok(self
+                .store
+                .dispatch(AppAction::SetThemeMode {
+                    mode: ThemeMode::System,
+                })?
+                .message),
+            "click" if action.id == "settings.theme.light" => Ok(self
+                .store
+                .dispatch(AppAction::SetThemeMode {
+                    mode: ThemeMode::Light,
+                })?
+                .message),
+            "click" if action.id == "settings.theme.dark" => Ok(self
+                .store
+                .dispatch(AppAction::SetThemeMode {
+                    mode: ThemeMode::Dark,
+                })?
+                .message),
             "get_value" if action.id == "main.input" => Ok(self.store.current_state()?.input),
             "focus"
                 if action.id == "main.input"
@@ -363,10 +471,15 @@ where
         }
 
         let state = self.store.current_state()?;
-        if state.is_about_open()
+        if state.active_dialog.is_some()
             && matches!(
                 action.id.as_str(),
-                "main.input" | "main.submit" | "main.reset" | "main.file-picker" | "help.about"
+                "main.input"
+                    | "main.submit"
+                    | "main.reset"
+                    | "main.file-picker"
+                    | "file.settings"
+                    | "help.about"
             )
         {
             return Err(ApplicationError::InvalidPayload(format!(
@@ -379,10 +492,31 @@ where
                 "Element ist nicht sichtbar: about.close".into(),
             ));
         }
+        if matches!(
+            action.id.as_str(),
+            "settings.close"
+                | "settings.theme.system"
+                | "settings.theme.light"
+                | "settings.theme.dark"
+        ) && !state.is_settings_open()
+        {
+            return Err(ApplicationError::InvalidPayload(format!(
+                "Element ist nicht sichtbar: {}",
+                action.id
+            )));
+        }
 
         let enabled = match action.id.as_str() {
             "main.submit" => state.can_submit(),
-            "main.reset" | "main.file-picker" | "help.about" | "about.close" => true,
+            "main.reset"
+            | "main.file-picker"
+            | "file.settings"
+            | "help.about"
+            | "about.close"
+            | "settings.close"
+            | "settings.theme.system"
+            | "settings.theme.light"
+            | "settings.theme.dark" => true,
             _ => return Ok(()),
         };
         if enabled {

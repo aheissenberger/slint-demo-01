@@ -1,0 +1,97 @@
+import { Theme } from "../theme/theme.slint";
+
+export component FluentRadioButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> checked: false;
+    in property <bool> disabled: false;
+    in property <string> agent-id: "";
+    in property <string> agent-role: "radio";
+    in property <string> agent-actions: "click";
+    callback selected;
+
+    height: Theme.control_height;
+    border-radius: Theme.radius_1;
+    border-width: Theme.border_width_none;
+    background: transparent;
+    opacity: disabled ? Theme.disabled_opacity : 1;
+    accessible-role: radio-button;
+    accessible-enabled: !disabled;
+    accessible-label: root.label;
+    accessible-description: root.agent-id;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => {
+        if (!disabled) {
+            root.selected();
+        }
+    }
+    forward-focus: focus-scope;
+
+    states [
+        pressed when touch-area.pressed : {
+            background: Theme.panel_subtle;
+        }
+        hover when touch-area.has-hover : {
+            background: Theme.panel_alt;
+        }
+        focus when focus-scope.has-focus : {
+            border-color: Theme.focus_ring;
+            border-width: Theme.focus_border_width;
+        }
+    ]
+
+    focus-scope := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: !disabled;
+
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                touch-area.clicked();
+                return accept;
+            }
+            return reject;
+        }
+
+        touch-area := TouchArea {
+            enabled: !disabled;
+            clicked => {
+                root.selected();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space_2;
+        padding-left: Theme.space_1;
+        padding-right: Theme.space_2;
+        alignment: start;
+
+        Rectangle {
+            width: Theme.radio_indicator_size;
+            height: self.width;
+            border-radius: self.width / 2;
+            border-width: Theme.border_width;
+            border-color: root.checked ? Theme.accent : Theme.border_strong;
+            background: root.checked ? Theme.accent : transparent;
+
+            if root.checked: Rectangle {
+                width: Theme.radio_dot_size;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                background: Theme.accent_foreground;
+            }
+        }
+
+        Text {
+            text: root.label;
+            color: disabled ? Theme.text_disabled : Theme.text_primary;
+            font-size: Theme.body_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.body_weight;
+            vertical-alignment: center;
+        }
+    }
+}

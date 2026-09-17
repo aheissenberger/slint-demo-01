@@ -28,6 +28,16 @@ fn apply_state(ui: &MainWindow, state: AppState) {
             ui.invoke_hide_about();
         }
     }
+    if ui.get_settings_visible() != state.is_settings_open() {
+        if state.is_settings_open() {
+            ui.invoke_show_settings();
+        } else {
+            ui.invoke_hide_settings();
+        }
+    }
+    if ui.get_theme_mode().as_str() != state.theme_mode.as_str() {
+        ui.set_theme_mode(state.theme_mode.as_str().into());
+    }
 }
 
 pub struct DesktopApp {
@@ -89,6 +99,8 @@ impl DesktopApp {
         Self::configure_file_picker(ui, &store);
         Self::configure_native_file_picker(ui, &store);
         Self::configure_about(ui, &store);
+        Self::configure_settings(ui, &store);
+        Self::configure_theme_mode(ui, &store);
         Self::configure_submit(ui, &store);
     }
 
@@ -156,6 +168,42 @@ impl DesktopApp {
             };
             if let Err(error) = store.dispatch(action) {
                 tracing::error!(%error, "failed to synchronize about dialog");
+            }
+        });
+    }
+
+    fn configure_settings(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_settings_visibility_changed(move |open| {
+            let action = if open {
+                AppAction::OpenSettings
+            } else {
+                AppAction::CloseSettings
+            };
+            if let Err(error) = store.dispatch(action) {
+                tracing::error!(%error, "failed to synchronize settings dialog");
+            }
+        });
+    }
+
+    fn configure_theme_mode(
+        ui: &MainWindow,
+        store: &Arc<application::AppStateStore<infrastructure::MemoryRepository>>,
+    ) {
+        let store = Arc::clone(store);
+        ui.on_theme_mode_changed(move |mode| {
+            let mode = match application::ThemeMode::parse(mode.as_str()) {
+                Ok(mode) => mode,
+                Err(error) => {
+                    tracing::error!(%error, "failed to parse theme mode");
+                    return;
+                }
+            };
+            if let Err(error) = store.dispatch(AppAction::SetThemeMode { mode }) {
+                tracing::error!(%error, "failed to synchronize theme mode");
             }
         });
     }

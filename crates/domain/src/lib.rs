@@ -104,6 +104,7 @@ pub enum AppScreen {
     #[default]
     Main,
     About,
+    Settings,
 }
 
 impl fmt::Display for AppScreen {
@@ -111,6 +112,7 @@ impl fmt::Display for AppScreen {
         let value = match self {
             Self::Main => "main",
             Self::About => "about",
+            Self::Settings => "settings",
         };
         f.write_str(value)
     }
@@ -153,5 +155,6 @@ mod tests {
         assert_eq!(AppStatus::Error.to_string(), "Fehler");
         assert_eq!(AppScreen::Main.to_string(), "main");
         assert_eq!(AppScreen::About.to_string(), "about");
+        assert_eq!(AppScreen::Settings.to_string(), "settings");
     }
 }

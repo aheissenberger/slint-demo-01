@@ -1,6 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 export global Theme {
+    in-out property <ColorScheme> color_scheme <=> Palette.color-scheme;
     out property <length> space_1: 4px;
     out property <length> space_2: 8px;
     out property <length> space_3: 12px;
@@ -9,8 +10,10 @@ export global Theme {
     out property <length> space_6: 24px;
     out property <length> space_8: 32px;
 
-    // Slint's Fluent style resolves this from the current system color scheme.
-    out property <bool> dark_color_scheme: Palette.color-scheme == ColorScheme.dark;
+    // With ColorScheme.unknown, Fluent resolves Palette.background from the
+    // current system setting. Its lightness keeps custom tokens in sync.
+    out property <bool> dark_color_scheme: color_scheme == ColorScheme.dark
+        || (color_scheme == ColorScheme.unknown && Palette.background.to-oklch().lightness < 0.5);
     out property <color> background: dark_color_scheme ? #1c1c1c : #f7f7f7;
     out property <color> panel: dark_color_scheme ? #292929 : #ffffff;
     out property <color> panel_alt: dark_color_scheme ? #333333 : #f5f5f5;
@@ -56,7 +59,10 @@ export global Theme {
     out property <length> window_min_height: 520px;
     out property <length> page_gutter: 32px;
     out property <length> form_content_width: 440px;
+    out property <length> settings_content_width: 480px;
     out property <length> button_min_width: 96px;
+    out property <length> radio_indicator_size: 20px;
+    out property <length> radio_dot_size: 8px;
     // Caps the width of the `AboutSlint` "Made with Slint" badge so its
     // logo image does not scale up to fill the whole About dialog width.
     out property <length> about_logo_max_width: 192px;

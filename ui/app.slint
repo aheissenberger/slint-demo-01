@@ -1,6 +1,7 @@
 import { FluentButton } from "./components/fluent-button.slint";
 import { FluentTextField } from "./components/fluent-text-field.slint";
 import { AboutDialog } from "./screens/about-dialog.slint";
+import { SettingsDialog } from "./screens/settings-dialog.slint";
 import { Theme } from "./theme/theme.slint";
 
 export component MainWindow inherits Window {
@@ -9,13 +10,33 @@ export component MainWindow inherits Window {
     in property <bool> submit-enabled: false;
     in-out property <string> input-value: "";
     in-out property <string> selected-file: "";
+    in-out property <string> theme-mode: "system";
     out property <bool> about-visible: about-popup.is-open;
+    out property <bool> settings-visible: settings-popup.is-open;
     callback submit(string);
     callback input-changed(string);
     callback pick-file();
     callback show-native-file-picker();
     callback reset();
     callback about-visibility-changed(bool);
+    callback settings-visibility-changed(bool);
+    callback theme-mode-changed(string);
+
+    function apply-theme-mode() {
+        Theme.color_scheme = root.theme-mode == "light"
+            ? ColorScheme.light
+            : root.theme-mode == "dark"
+                ? ColorScheme.dark
+                : ColorScheme.unknown;
+    }
+
+    init => {
+        root.apply-theme-mode();
+    }
+
+    changed theme-mode => {
+        root.apply-theme-mode();
+    }
 
     public function show-about() {
         about-popup.show();
@@ -25,6 +46,16 @@ export component MainWindow inherits Window {
     public function hide-about() {
         about-popup.close();
         root.about-visibility-changed(false);
+    }
+
+    public function show-settings() {
+        settings-popup.show();
+        root.settings-visibility-changed(true);
+    }
+
+    public function hide-settings() {
+        settings-popup.close();
+        root.settings-visibility-changed(false);
     }
 
     public function focus-control(element-id: string) {
@@ -47,6 +78,19 @@ export component MainWindow inherits Window {
 
     MenuBar {
         Menu {
+            title: "Datei";
+            // agent-id: "file.settings"
+            // agent-role: "menuitem"
+            // agent-actions: "click"
+            MenuItem {
+                title: "Einstellungen";
+                activated => {
+                    root.show-settings();
+                }
+            }
+        }
+
+        Menu {
             title: "Hilfe";
             // agent-id: "help.about"
             // agent-role: "menuitem"
@@ -59,6 +103,35 @@ export component MainWindow inherits Window {
                 activated => {
                     root.show-about();
                 }
+            }
+        }
+    }
+
+    // agent-id: "settings.dialog"
+    // agent-role: "dialog"
+    // agent-actions: ""
+    settings-popup := PopupWindow {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        close-policy: no-auto-close;
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.scrim;
+        }
+
+        SettingsDialog {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            theme-mode <=> root.theme-mode;
+            theme-mode-changed(mode) => {
+                root.theme-mode-changed(mode);
+            }
+            close-requested => {
+                root.hide-settings();
             }
         }
     }

@@ -20,6 +20,7 @@ pub struct AppState {
     pub error_message: Option<String>,
     pub busy: bool,
     pub active_dialog: Option<ActiveDialog>,
+    pub theme_mode: ThemeMode,
 }
 
 impl AppState {
@@ -32,18 +33,24 @@ impl AppState {
             error_message: None,
             busy: false,
             active_dialog: None,
+            theme_mode: ThemeMode::System,
         }
     }
 
     pub fn screen(&self) -> AppScreen {
         match self.active_dialog {
             Some(ActiveDialog::About) => AppScreen::About,
+            Some(ActiveDialog::Settings) => AppScreen::Settings,
             None => AppScreen::Main,
         }
     }
 
     pub fn is_about_open(&self) -> bool {
         self.active_dialog == Some(ActiveDialog::About)
+    }
+
+    pub fn is_settings_open(&self) -> bool {
+        self.active_dialog == Some(ActiveDialog::Settings)
     }
 
     pub fn can_submit(&self) -> bool {
@@ -83,8 +90,24 @@ impl AppState {
                 Ok("Info-Dialog geöffnet".to_string())
             }
             AppAction::CloseAbout => {
-                self.active_dialog = None;
+                if self.is_about_open() {
+                    self.active_dialog = None;
+                }
                 Ok("Info-Dialog geschlossen".to_string())
+            }
+            AppAction::OpenSettings => {
+                self.active_dialog = Some(ActiveDialog::Settings);
+                Ok("Einstellungen geöffnet".to_string())
+            }
+            AppAction::CloseSettings => {
+                if self.is_settings_open() {
+                    self.active_dialog = None;
+                }
+                Ok("Einstellungen geschlossen".to_string())
+            }
+            AppAction::SetThemeMode { mode } => {
+                self.theme_mode = *mode;
+                Ok(format!("App-Design auf {} gesetzt", mode.label()))
             }
         }
     }
@@ -127,6 +150,45 @@ impl Default for AppState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActiveDialog {
     About,
+    Settings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemeMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => "Systemeinstellung",
+            Self::Light => "Hell",
+            Self::Dark => "Dunkel",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, ApplicationError> {
+        match value {
+            "system" => Ok(Self::System),
+            "light" => Ok(Self::Light),
+            "dark" => Ok(Self::Dark),
+            _ => Err(ApplicationError::InvalidPayload(format!(
+                "unbekannter Darstellungsmodus: {value}"
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +201,9 @@ pub enum AppAction {
     Reset,
     OpenAbout,
     CloseAbout,
+    OpenSettings,
+    CloseSettings,
+    SetThemeMode { mode: ThemeMode },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -3,7 +3,7 @@ mod use_cases;
 
 pub use reducer::{
     ActiveDialog, AppAction, AppEffect, AppEvent, AppReducer, AppState, ApplicationError,
-    CommandResult,
+    CommandResult, ThemeMode,
 };
 pub use use_cases::{AppRepository, AppService, SubmissionPayload};
 
@@ -271,6 +271,43 @@ mod tests {
 
         assert!(updates.try_recv().is_err());
         assert_eq!(store.current_state().unwrap().revision, revision);
+    }
+
+    #[test]
+    fn settings_and_theme_mode_share_the_application_state() {
+        let store = AppStateStore::new(AppService::new(FakeRepository::default()));
+
+        assert_eq!(store.current_state().unwrap().theme_mode, ThemeMode::System);
+        store.dispatch(AppAction::OpenSettings).unwrap();
+        assert_eq!(
+            store.current_state().unwrap().screen(),
+            domain::AppScreen::Settings
+        );
+
+        store
+            .dispatch(AppAction::SetThemeMode {
+                mode: ThemeMode::Dark,
+            })
+            .unwrap();
+        let state = store.current_state().unwrap();
+        assert_eq!(state.theme_mode, ThemeMode::Dark);
+        assert!(state.is_settings_open());
+
+        store.dispatch(AppAction::CloseSettings).unwrap();
+        let state = store.current_state().unwrap();
+        assert_eq!(state.screen(), domain::AppScreen::Main);
+        assert_eq!(state.theme_mode, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn theme_mode_parser_rejects_unknown_values() {
+        assert_eq!(ThemeMode::parse("system").unwrap(), ThemeMode::System);
+        assert_eq!(ThemeMode::parse("light").unwrap(), ThemeMode::Light);
+        assert_eq!(ThemeMode::parse("dark").unwrap(), ThemeMode::Dark);
+        assert!(ThemeMode::parse("automatic")
+            .unwrap_err()
+            .to_string()
+            .contains("unbekannter Darstellungsmodus"));
     }
 
     #[test]

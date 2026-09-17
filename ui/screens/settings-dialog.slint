@@ -1,0 +1,132 @@
+import { FluentButton } from "../components/fluent-button.slint";
+import { FluentRadioButton } from "../components/fluent-radio-button.slint";
+import { Theme } from "../theme/theme.slint";
+
+export component SettingsDialog inherits Rectangle {
+    in-out property <string> theme-mode: "system";
+    callback theme-mode-changed(string);
+    callback close-requested();
+
+    function select-theme-mode(mode: string) {
+        if (root.theme-mode != mode) {
+            root.theme-mode = mode;
+            root.theme-mode-changed(mode);
+        }
+    }
+
+    width: Theme.settings_content_width + Theme.space_6 * 2;
+    height: self.preferred-height;
+    border-radius: Theme.radius_2;
+    border-width: Theme.border_width;
+    border-color: Theme.border;
+    background: Theme.panel;
+    drop-shadow-color: Theme.shadow;
+    drop-shadow-blur: Theme.dialog_shadow_blur;
+    drop-shadow-offset-y: Theme.dialog_shadow_offset_y;
+    accessible-role: groupbox;
+    accessible-label: "Einstellungen";
+
+    VerticalLayout {
+        padding: Theme.space_6;
+        spacing: Theme.space_4;
+        alignment: start;
+
+        Text {
+            text: "Einstellungen";
+            color: Theme.text_primary;
+            font-size: Theme.title_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.title_weight;
+            height: Theme.title_line_height;
+        }
+
+        Text {
+            text: "Darstellung";
+            color: Theme.text_primary;
+            font-size: Theme.subtitle_size;
+            font-family: Theme.font_family;
+            font-weight: Theme.strong_weight;
+            height: Theme.subtitle_line_height;
+        }
+
+        Text {
+            text: "Legen Sie fest, ob die App der Systemeinstellung folgt oder ein festes Design verwendet.";
+            color: Theme.text_secondary;
+            font-size: Theme.body_size;
+            font-family: Theme.font_family;
+            height: Theme.body_line_height * 2;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            height: self.preferred-height;
+            accessible-role: groupbox;
+            accessible-label: "App-Design";
+
+            VerticalLayout {
+                spacing: Theme.space_2;
+
+                Text {
+                    text: "App-Design";
+                    color: Theme.text_primary;
+                    font-size: Theme.body_size;
+                    font-family: Theme.font_family;
+                    font-weight: Theme.body_weight;
+                    height: Theme.body_line_height;
+                }
+
+                FluentRadioButton {
+                    width: parent.width;
+                    label: "Systemeinstellung verwenden";
+                    checked: root.theme-mode == "system";
+                    agent-id: "settings.theme.system";
+                    agent-role: "radio";
+                    agent-actions: "click";
+                    selected => {
+                        root.select-theme-mode("system");
+                    }
+                }
+
+                FluentRadioButton {
+                    width: parent.width;
+                    label: "Hell";
+                    checked: root.theme-mode == "light";
+                    agent-id: "settings.theme.light";
+                    agent-role: "radio";
+                    agent-actions: "click";
+                    selected => {
+                        root.select-theme-mode("light");
+                    }
+                }
+
+                FluentRadioButton {
+                    width: parent.width;
+                    label: "Dunkel";
+                    checked: root.theme-mode == "dark";
+                    agent-id: "settings.theme.dark";
+                    agent-role: "radio";
+                    agent-actions: "click";
+                    selected => {
+                        root.select-theme-mode("dark");
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            height: Theme.control_height;
+
+            FluentButton {
+                label: "Schließen";
+                primary: true;
+                agent-id: "settings.close";
+                agent-role: "button";
+                agent-actions: "click";
+                clicked => {
+                    root.close-requested();
+                }
+            }
+        }
+    }
+}

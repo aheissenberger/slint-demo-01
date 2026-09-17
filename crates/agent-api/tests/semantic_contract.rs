@@ -176,6 +176,94 @@ fn hidden_dialog_controls_cannot_be_activated() {
 }
 
 #[test]
+fn settings_menu_exposes_and_changes_the_theme_mode() {
+    let api = api();
+    let initial_state = api.get_state().expect("initial state");
+    assert_eq!(initial_state.theme_mode, "system");
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "file.settings".into(),
+        value: None,
+    })
+    .expect("open settings");
+
+    let opened = api
+        .inspect_ui()
+        .expect("UI inspection after opening settings");
+    assert_eq!(opened.screen, "settings");
+    assert!(opened
+        .elements
+        .iter()
+        .any(|element| element.id == "settings.dialog"));
+    assert_eq!(
+        opened
+            .elements
+            .iter()
+            .find(|element| element.id == "settings.theme.system")
+            .expect("system theme option")
+            .value
+            .as_deref(),
+        Some("true")
+    );
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "settings.theme.dark".into(),
+        value: None,
+    })
+    .expect("select dark theme");
+    assert_eq!(
+        api.get_state().expect("dark theme state").theme_mode,
+        "dark"
+    );
+
+    let updated = api.inspect_ui().expect("inspection after theme change");
+    assert_eq!(
+        updated
+            .elements
+            .iter()
+            .find(|element| element.id == "settings.theme.dark")
+            .expect("dark theme option")
+            .value
+            .as_deref(),
+        Some("true")
+    );
+
+    api.execute_ui_action(AgentActionRequest {
+        action: "click".into(),
+        id: "settings.close".into(),
+        value: None,
+    })
+    .expect("close settings");
+    assert!(!api
+        .inspect_ui()
+        .expect("inspection after closing settings")
+        .elements
+        .iter()
+        .any(|element| element.id == "settings.dialog"));
+}
+
+#[test]
+fn hidden_settings_controls_cannot_be_activated() {
+    let api = api();
+
+    let error = api
+        .execute_ui_action(AgentActionRequest {
+            action: "click".into(),
+            id: "settings.theme.light".into(),
+            value: None,
+        })
+        .expect_err("hidden theme control must reject activation");
+
+    assert!(error.to_string().contains("nicht sichtbar"));
+    assert_eq!(
+        api.get_state().expect("unchanged state").theme_mode,
+        "system"
+    );
+}
+
+#[test]
 fn agent_can_select_a_file_through_the_same_state_transition_as_the_native_picker() {
     let api = api();
     let initial = api.inspect_ui().expect("initial UI inspection");
