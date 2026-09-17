@@ -62,6 +62,12 @@ Die Desktop-Anwendung verwendet das Betriebssystemdatenverzeichnis von
 Windows `%LOCALAPPDATA%\aheissenberger\slint-demo\data`. Darin liegen getrennt
 von den fachlichen Anwendungsdaten die Laufzeitdateien unter `runtime/`:
 
+Die macOS-Bundle-ID lautet ebenfalls `com.aheissenberger.slint-demo`. Dadurch
+stimmen die Identität in `Info.plist` und der von macOS für private,
+persistente Anwendungsdaten vorgesehene Ordner unter `Application Support`
+überein. `SLINT_DEMO_DATA_DIR` kann den Datenordner weiterhin gezielt für
+Tests und verwaltete Installationen überschreiben.
+
 - `instance.lock` stellt sicher, dass nur eine Desktop-Instanz gleichzeitig
   läuft. Ein zweiter Start beendet sich ohne eine weitere Benutzeroberfläche.
 - `window-state.json` speichert Größe und Position des Hauptfensters. Auf

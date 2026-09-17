@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+app_version="${1:?Aufruf: scripts/package-macos-app APP_VERSION}"
+bundle="target/release/bundle/slint-demo.app"
+executable="target/release/slint-demo"
+plist_template="packaging/macos/Info.plist"
+
+if [[ ! "$app_version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+  echo "Ungültige macOS-Bundle-Version: ${app_version}" >&2
+  exit 1
+fi
+
+if [[ ! -x "$executable" ]]; then
+  echo "Release-Programmdatei fehlt oder ist nicht ausführbar: ${executable}" >&2
+  exit 1
+fi
+
+rm -rf "target/release/bundle"
+mkdir -p "${bundle}/Contents/MacOS"
+install -m 755 "$executable" "${bundle}/Contents/MacOS/slint-demo"
+sed "s/APP_VERSION/${app_version}/g" "$plist_template" > "${bundle}/Contents/Info.plist"
+
+plutil -lint "${bundle}/Contents/Info.plist"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${bundle}/Contents/Info.plist")" = \
+  "com.aheissenberger.slint-demo"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${bundle}/Contents/Info.plist")" = \
+  "slint-demo"
+file "${bundle}/Contents/MacOS/slint-demo"

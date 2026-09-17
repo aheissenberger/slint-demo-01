@@ -80,6 +80,11 @@ it signs and notarizes a distribution only when its complete Apple signing
 configuration is available; otherwise it emits the unsigned artifact and a CI
 warning instead of failing the test release.
 
+Das App-Bundle verwendet die Kennung `com.aheissenberger.slint-demo`.
+Persistente Benutzerdaten werden dadurch passend zur Bundle-Identität unter
+`~/Library/Application Support/com.aheissenberger.slint-demo` abgelegt.
+Die gemeinsame Plist-Vorlage liegt unter `packaging/macos/Info.plist`.
+
 ### Enabling macOS signing and notarization
 
 To enable the optional signed macOS artifact for a `v*` tag, configure all of
